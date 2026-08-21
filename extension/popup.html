@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Toolkit</title>
+  <style>
+    @font-face {
+      font-family: "Janna LT";
+      src: url("fonts/janna-lt-bold.ttf") format("truetype");
+      font-weight: 700;
+      font-display: swap;
+    }
+    :root {
+      --bg: #f2ece1;
+      --ink: #2c2721;
+      --muted: #837a6f;
+      --line: #e4dbcc;
+      --track: #d6cec0;
+      --accent: #c67f56;
+      --accent-ink: #a1603a;
+      --accent-soft: #ecdfcd;
+      --hover: #ebe1d2;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 304px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      -webkit-font-smoothing: antialiased;
+    }
+    body.lang-ar { font-family: "Janna LT", system-ui, sans-serif; font-weight: 700; -webkit-font-smoothing: antialiased; }
+    body.lang-ar .brand, body.lang-ar .label { font-weight: 700; }
+    body.lang-ar .label { font-size: 14px; }
+    body.lang-ar .sub, body.lang-ar #dlNote, body.lang-ar footer, body.lang-ar #savedStat, body.lang-ar .dlbtn, body.lang-ar .section h2 { font-weight: 700; font-size: 12px; }
+    .wrap { padding: 14px 16px 16px; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .brand { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .brand b { font-weight: 700; color: var(--accent); }
+
+    /* segmented language control */
+    .seg { display: inline-flex; background: var(--hover); border-radius: 8px; padding: 2px; gap: 2px; }
+    .seg button {
+      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 0; background: transparent; color: var(--muted);
+      padding: 3px 9px; border-radius: 6px; line-height: 1.4;
+    }
+    .seg button.on { background: #fdf9f2; color: var(--ink); box-shadow: 0 1px 2px rgba(80,60,40,.12); }
+
+    /* rows */
+    .row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 2px;
+    }
+    .row + .row { border-top: 1px solid var(--line); }
+    .row .text { flex: 1; min-width: 0; }
+    .row .label { font-weight: 500; }
+    .row .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .row.off { opacity: .45; }
+    .row.off .switch { pointer-events: none; }
+    .row, .dlbtn, .seg button, .track, .track::after { transition: all .24s cubic-bezier(.4, 0, .2, 1); }
+
+    /* switch */
+    .switch { position: relative; flex: none; width: 38px; height: 22px; cursor: pointer; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .track { position: absolute; inset: 0; background: var(--track); border-radius: 999px; transition: background .24s cubic-bezier(.4, 0, .2, 1); }
+    .track::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 18px; height: 18px; background: #fff; border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(70, 55, 40, .20); transition: transform .24s cubic-bezier(.4, 0, .2, 1);
+    }
+    input:checked + .track { background: var(--accent); }
+    input:checked + .track::after { transform: translateX(16px); }
+
+    /* volume */
+    .vol { padding: 12px 2px 3px; border-top: 1px solid var(--line); }
+    .volhead { display: flex; align-items: center; justify-content: space-between; }
+    .volval { font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+    #volume {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; margin-top: 10px; height: 6px; cursor: pointer;
+      border-radius: 999px; background: var(--track);
+    }
+    #volume::-webkit-slider-runnable-track { -webkit-appearance: none; height: 6px; border-radius: 999px; background: transparent; }
+    #volume::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; margin-top: -5px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--accent); border: 2px solid #fdf9f2;
+      box-shadow: 0 1px 2px rgba(70, 55, 40, .28);
+    }
+    #volume::-moz-range-track { height: 6px; border-radius: 999px; background: var(--track); }
+    #volume::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+    #volume::-moz-range-thumb {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--accent); border: 2px solid #fdf9f2;
+      box-shadow: 0 1px 2px rgba(70, 55, 40, .28);
+    }
+
+    html { scrollbar-width: thin; scrollbar-color: #cfc6b7 transparent; }
+    ::-webkit-scrollbar { width: 9px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d3cabb; border-radius: 999px; border: 2px solid var(--bg); }
+    ::-webkit-scrollbar-thumb:hover { background: #c4baaa; }
+
+    #savedStat { font-size: 11px; font-weight: 500; color: var(--accent-ink); padding: 3px 2px 9px; }
+    #savedStat:empty { display: none; }
+    #savedStat + .row { border-top: 1px solid var(--line); }
+
+    /* download */
+    .section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .section h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    #dlNote { font-size: 11px; color: var(--muted); margin-bottom: 9px; }
+    .dlbtn {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      font: inherit; font-size: 12.5px; font-weight: 500; text-align: left; cursor: pointer;
+      background: transparent; color: var(--ink); border: 1px solid var(--line);
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 7px;
+    }
+    .dlbtn:hover { background: var(--hover); }
+    .dlbtn::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--track); flex: none;
+    }
+    .dlbtn.primary { border-color: var(--accent-soft); }
+    .dlbtn.primary::before { background: var(--accent); }
+    #dlButtons.off { opacity: .45; pointer-events: none; }
+    #dlHint { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 14px; }
+
+    footer { font-size: 10.5px; color: var(--muted); text-align: center; margin-top: 12px; }
+
+    #updateBanner {
+      display: none; align-items: center; gap: 8px;
+      margin-bottom: 10px; padding: 9px 10px; border-radius: 10px;
+      background: var(--accent-soft); border: 1px solid var(--accent);
+    }
+    #updateBanner.show { display: flex; }
+    #updateBanner .text { flex: 1; min-width: 0; }
+    #updateBanner .label { font-weight: 600; font-size: 12px; color: var(--accent-ink); }
+    #updateBanner .sub { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+    #updateBanner a.dl {
+      flex: none; font: inherit; font-size: 11.5px; font-weight: 600; text-decoration: none;
+      background: var(--accent); color: #fff; padding: 6px 10px; border-radius: 8px;
+    }
+    #updateBanner a.dl:hover { background: var(--accent-ink); }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand" data-i18n="title">Clear<b>Tube</b></div>
+      <div class="seg">
+        <button id="langEn">EN</button>
+        <button id="langAr">ع</button>
+      </div>
+    </header>
+
+    <div id="updateBanner">
+      <div class="text">
+        <div class="label" data-i18n="updateLabel">Update available</div>
+        <div class="sub" id="updateSub"></div>
+      </div>
+      <a class="dl" id="updateDl" href="#" data-i18n="updateGet">Get it</a>
+    </div>
+
+    <div class="row">
+      <div class="text"><div class="label" data-i18n="blockAds">Block ads</div><div class="sub" data-i18n="blockAdsSub">YouTube + web</div></div>
+      <label class="switch"><input type="checkbox" id="blockAds" /><span class="track"></span></label>
+    </div>
+
+    <div class="row">
+      <div class="text"><div class="label" data-i18n="loop">Auto-loop</div><div class="sub" data-i18n="loopSub">Repeat, no refresh</div></div>
+      <label class="switch"><input type="checkbox" id="loop" /><span class="track"></span></label>
+    </div>
+
+    <div class="row">
+      <div class="text"><div class="label" data-i18n="skip">Skip sponsors</div><div class="sub" data-i18n="skipSub">SponsorBlock data</div></div>
+      <label class="switch"><input type="checkbox" id="skipSponsors" /><span class="track"></span></label>
+    </div>
+    <div id="savedStat"></div>
+
+    <div class="row">
+      <div class="text"><div class="label" data-i18n="dislikes">Show dislikes</div><div class="sub" data-i18n="dislikesSub">Return YT Dislike</div></div>
+      <label class="switch"><input type="checkbox" id="showDislikes" /><span class="track"></span></label>
+    </div>
+
+    <div class="row">
+      <div class="text"><div class="label" data-i18n="hideShorts">Hide Shorts</div><div class="sub" data-i18n="hideShortsSub">Feeds &amp; search</div></div>
+      <label class="switch"><input type="checkbox" id="hideShorts" /><span class="track"></span></label>
+    </div>
+
+    <div class="row sub-row" id="redirectRow">
+      <div class="text"><div class="label" data-i18n="redirect">Shorts as video</div><div class="sub" data-i18n="redirectSub">Full player</div></div>
+      <label class="switch"><input type="checkbox" id="redirectShorts" /><span class="track"></span></label>
+    </div>
+
+    <div class="vol">
+      <div class="volhead">
+        <span class="label" data-i18n="volume">Volume boost</span>
+        <span class="volval" id="volVal">100%</span>
+      </div>
+      <input type="range" id="volume" min="100" max="500" step="10" value="100" />
+    </div>
+
+    <div class="section">
+      <h2 data-i18n="download">Download</h2>
+      <div id="dlNote" data-i18n="dlNote">Open a video, then:</div>
+      <div id="dlButtons">
+        <button class="dlbtn primary" data-svc="quality" data-i18n="dlQuality">Choose quality (up to 4K)</button>
+        <button class="dlbtn" data-svc="ytmp3">ytmp3.ws · MP3 &amp; MP4</button>
+        <button class="dlbtn" data-svc="ytmp4">ytmp4.video · MP4</button>
+        <button class="dlbtn" data-svc="ytdlp" data-i18n="ytdlp">Copy yt-dlp command</button>
+      </div>
+      <div id="dlHint"></div>
+    </div>
+
+    <footer data-i18n="footer">Reload YouTube after changing options.</footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

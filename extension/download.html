@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClearTube — Choose quality</title>
+  <style>
+    :root {
+      --bg: #f2ece1;
+      --ink: #2c2721;
+      --muted: #837a6f;
+      --line: #e4dbcc;
+      --accent: #c67f56;
+      --accent-ink: #a1603a;
+      --accent-soft: #ecdfcd;
+      --hover: #ebe1d2;
+      --bad: #b1493a;
+      --good: #4c7a52;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 28px 24px 40px; }
+    header { margin-bottom: 18px; }
+    .brand { font-size: 20px; font-weight: 700; }
+    .brand b { color: var(--accent); }
+    .title { font-size: 15px; color: var(--muted); margin-top: 4px; word-break: break-word; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fdf9f2;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .card h2 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 4px;
+      border-radius: 10px;
+    }
+    .row + .row { border-top: 1px solid var(--line); }
+    .row:hover { background: var(--hover); }
+    .row .label { font-weight: 600; }
+    .row .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 6px;
+      border-radius: 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .tag.enhanced { background: #f1dfcd; color: var(--accent-ink); }
+    .tag.instant { background: #e3ecdf; color: var(--good); }
+    .tag.muxed { background: #ecdfcd; color: var(--accent-ink); }
+
+    button.pick {
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 9px;
+      padding: 8px 14px;
+      flex: none;
+    }
+    button.pick:hover { background: var(--accent-ink); }
+    button.pick:disabled { opacity: 0.5; cursor: default; }
+
+    #status {
+      display: none;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fdf9f2;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    #status.show { display: block; }
+    #statusLabel { font-weight: 600; margin-bottom: 8px; }
+    .bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+    .bar > div { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s ease; }
+    #statusNote { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    #statusNote.error { color: var(--bad); }
+
+    #empty, #loading { font-size: 13px; color: var(--muted); padding: 6px 4px; }
+    footer { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">Clear<b>Tube</b> — Choose quality</div>
+      <div class="title" id="videoTitle">Reading formats from the open tab…</div>
+    </header>
+
+    <div id="status">
+      <div id="statusLabel">Working…</div>
+      <div class="bar"><div id="statusBar"></div></div>
+      <div id="statusNote"></div>
+    </div>
+
+    <div class="card">
+      <h2>Instant (progressive, no processing)</h2>
+      <div id="progressiveList"><div id="loading">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>High quality (video + audio merged in your browser)</h2>
+      <div id="adaptiveList"></div>
+    </div>
+
+    <div class="card">
+      <h2>Audio only</h2>
+      <div id="audioList"></div>
+    </div>
+
+    <footer>High-quality options fetch a ~30MB one-time media engine to merge video and audio locally. Nothing leaves your computer.</footer>
+  </div>
+
+  <script src="ffmpeg/ffmpeg.js"></script>
+  <script src="ffmpeg/ffmpeg-util.js"></script>
+  <script src="download.js"></script>
+</body>
+</html>

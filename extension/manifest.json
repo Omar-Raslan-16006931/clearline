@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "ClearTube",
+  "version": "1.9.0",
+  "description": "Blocks ads, skips sponsors, controls speed up to 50x, boosts volume to 500%, shows dislikes, hides Shorts, loops, and downloads — with on-player controls.",
+  "permissions": ["storage", "downloads", "clipboardWrite", "declarativeNetRequest", "alarms"],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "ad_rules", "enabled": true, "path": "rules.json" }
+    ]
+  },
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.googlevideo.com/*",
+    "https://sponsor.ajay.app/*",
+    "https://returnyoutubedislikeapi.com/*",
+    "https://cleartube.vercel.app/*",
+    "https://unpkg.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ClearTube",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["webads.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["*://*.youtube.com/*"]
+    }
+  ]
+}
