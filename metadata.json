@@ -1,0 +1,6 @@
+{
+  "name": "Clearline",
+  "description": "Clearline is a privacy-first browser extension that blocks website ads, skips YouTube ads and sponsor segments, and hides YouTube Shorts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
