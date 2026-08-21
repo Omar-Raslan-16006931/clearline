@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import {
   Ban, SkipForward, EyeOff, Volume2, ThumbsDown, Repeat, Download, Languages, ShieldCheck, SlidersHorizontal,
 } from 'lucide-react';
@@ -34,6 +35,14 @@ const rise = (d = 0) => ({
 const label = 'text-[12px] font-semibold tracking-[0.2em] uppercase text-[#9b7d68]';
 
 export function Home() {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/version.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && d.version && setVersion(d.version))
+      .catch(() => {});
+  }, []);
+
   return (
     <InfiniteGridHero>
       <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-7 lg:px-10 py-8 md:py-10">
@@ -50,7 +59,7 @@ export function Home() {
             <p className="mt-4 text-[17px] text-[#68584d] max-w-md leading-relaxed">
               ClearTube strips YouTube back to what you came for.
             </p>
-            <div className="mt-6">
+            <div className="mt-6 flex items-center gap-3 flex-wrap">
               <a
                 href="/cleartube.zip"
                 download
@@ -58,6 +67,11 @@ export function Home() {
               >
                 <Download size={20} /> Download ClearTube
               </a>
+              {version && (
+                <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-[#ce7d51]/10 text-[#a1603a] border border-[#ce7d51]/25">
+                  v{version}
+                </span>
+              )}
             </div>
             <p className="mt-6 text-sm text-[#6f6890]">Free &amp; open source · Chrome, Brave, Edge · no account.</p>
           </motion.div>

@@ -621,15 +621,17 @@
       "#ct-speed-slider::-moz-range-thumb,#ct-vol-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
       "border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
       "#ct-speed-slider::-moz-range-track,#ct-vol-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
-      "#ct-speed-ticks{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:24px;}" +
-      "#ct-speed-ticks b{position:absolute;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
+      "#ct-speed-ticks{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:12px;}" +
+      "#ct-speed-ticks b{position:absolute;top:1px;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
       "color:var(--yt-spec-text-secondary,#aaa);cursor:pointer;user-select:none;white-space:nowrap;}" +
       "#ct-speed-ticks b:hover{color:#ff5277;}";
     document.head.appendChild(style);
   }
   const SPEED_TRACK_WIDTH = 300;
-  const SPEED_TICK_LABELS = [1, 2, 3, 5, 10, 20, 30, 40, 50, 100];
-  const SPEED_TICK_MIN_GAP = 24; // px — below this, stagger onto a second row so labels don't collide
+  // Labels shown under the track — kept sparse so they never collide on a
+  // single row. Dragging still snaps to every point in SPEED_SNAP_POINTS
+  // (2×, 3×, 30×, 40×, etc.) even though not all of them get their own label.
+  const SPEED_TICK_LABELS = [1, 2, 5, 10, 20, 50, 100];
 
   /* ---------- ON-PAGE CONTROL BAR (below the video) ---------- */
   function barBtn(text, active, onClick, title) {
@@ -743,15 +745,11 @@
 
     const ticks = document.createElement("span");
     ticks.id = "ct-speed-ticks";
-    const lastRowX = [-Infinity, -Infinity]; // greedy two-row layout so close ticks (20×/30×/40×/50×) don't overlap
     SPEED_TICK_LABELS.forEach((p) => {
       const x = (speedToPos(p) / SLIDER_STEPS) * SPEED_TRACK_WIDTH;
-      let row = x - lastRowX[0] >= SPEED_TICK_MIN_GAP ? 0 : x - lastRowX[1] >= SPEED_TICK_MIN_GAP ? 1 : 0;
-      lastRowX[row] = x;
       const t = document.createElement("b");
       t.textContent = p + "×";
       t.style.left = x + "px";
-      t.style.top = row === 0 ? "1px" : "13px";
       t.addEventListener("click", () => {
         slider.value = String(speedToPos(p));
         valueLabel.textContent = fmtSpeed(p);
