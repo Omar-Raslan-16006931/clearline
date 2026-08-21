@@ -566,6 +566,15 @@
     }
     applySpeed();
   }
+  function setVolumeBoost(v, persist) {
+    settings.volumeBoost = v;
+    if (persist !== false) {
+      try {
+        chrome.storage.sync.set({ volumeBoost: v });
+      } catch (_) {}
+    }
+    applyBoost();
+  }
   function fmtSpeed(s) {
     return (Math.abs(s - Math.round(s)) < 0.001 ? Math.round(s) : Math.round(s * 100) / 100) + "×";
   }
@@ -603,21 +612,24 @@
     const style = document.createElement("style");
     style.id = "ct-speed-style";
     style.textContent =
-      "#ct-speed-slider{-webkit-appearance:none;appearance:none;width:220px;height:6px;border-radius:999px;" +
+      "#ct-speed-slider,#ct-vol-slider{-webkit-appearance:none;appearance:none;width:" + SPEED_TRACK_WIDTH + "px;height:6px;border-radius:999px;" +
       "background:rgba(128,128,128,0.35);outline:none;vertical-align:middle;margin:0;}" +
-      "#ct-speed-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;" +
+      "#ct-vol-slider{width:130px;}" +
+      "#ct-speed-slider::-webkit-slider-thumb,#ct-vol-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;" +
       "border-radius:50%;background:#ff5277;border:2px solid #fff;cursor:pointer;margin-top:-4px;" +
       "box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
-      "#ct-speed-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
+      "#ct-speed-slider::-moz-range-thumb,#ct-vol-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
       "border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
-      "#ct-speed-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
-      "#ct-speed-ticks{position:relative;width:220px;height:12px;}" +
-      "#ct-speed-ticks b{position:absolute;top:1px;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
-      "color:var(--yt-spec-text-secondary,#aaa);cursor:pointer;user-select:none;}" +
+      "#ct-speed-slider::-moz-range-track,#ct-vol-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
+      "#ct-speed-ticks{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:24px;}" +
+      "#ct-speed-ticks b{position:absolute;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
+      "color:var(--yt-spec-text-secondary,#aaa);cursor:pointer;user-select:none;white-space:nowrap;}" +
       "#ct-speed-ticks b:hover{color:#ff5277;}";
     document.head.appendChild(style);
   }
+  const SPEED_TRACK_WIDTH = 300;
   const SPEED_TICK_LABELS = [1, 2, 3, 5, 10, 20, 30, 40, 50, 100];
+  const SPEED_TICK_MIN_GAP = 24; // px — below this, stagger onto a second row so labels don't collide
 
   /* ---------- ON-PAGE CONTROL BAR (below the video) ---------- */
   function barBtn(text, active, onClick, title) {
@@ -731,10 +743,15 @@
 
     const ticks = document.createElement("span");
     ticks.id = "ct-speed-ticks";
+    const lastRowX = [-Infinity, -Infinity]; // greedy two-row layout so close ticks (20×/30×/40×/50×) don't overlap
     SPEED_TICK_LABELS.forEach((p) => {
+      const x = (speedToPos(p) / SLIDER_STEPS) * SPEED_TRACK_WIDTH;
+      let row = x - lastRowX[0] >= SPEED_TICK_MIN_GAP ? 0 : x - lastRowX[1] >= SPEED_TICK_MIN_GAP ? 1 : 0;
+      lastRowX[row] = x;
       const t = document.createElement("b");
       t.textContent = p + "×";
-      t.style.left = (speedToPos(p) / SLIDER_STEPS) * 100 + "%";
+      t.style.left = x + "px";
+      t.style.top = row === 0 ? "1px" : "13px";
       t.addEventListener("click", () => {
         slider.value = String(speedToPos(p));
         valueLabel.textContent = fmtSpeed(p);
@@ -751,6 +768,42 @@
     divider.style.cssText =
       "width:1px;height:20px;background:rgba(128,128,128,0.35);margin:0 4px;";
     bar.appendChild(divider);
+
+    const volLabel = document.createElement("span");
+    volLabel.textContent = "Volume";
+    volLabel.style.cssText =
+      "font:600 12px Roboto,system-ui,sans-serif;color:var(--yt-spec-text-secondary,#aaa);";
+    bar.appendChild(volLabel);
+
+    const curVol = Math.max(100, Math.min(500, Number(settings.volumeBoost) || 100));
+    const volValueLabel = document.createElement("span");
+    volValueLabel.textContent = curVol + "%";
+    volValueLabel.style.cssText =
+      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:38px;";
+
+    const volSlider = document.createElement("input");
+    volSlider.type = "range";
+    volSlider.id = "ct-vol-slider";
+    volSlider.min = "100";
+    volSlider.max = "500";
+    volSlider.step = "10";
+    volSlider.value = String(curVol);
+    volSlider.title = "Volume boost (100%–500%)";
+    volSlider.addEventListener("input", () => {
+      const v = Number(volSlider.value);
+      volValueLabel.textContent = v + "%";
+      setVolumeBoost(v, false);
+    });
+    volSlider.addEventListener("change", () => {
+      setVolumeBoost(Number(volSlider.value), true);
+    });
+    bar.appendChild(volSlider);
+    bar.appendChild(volValueLabel);
+
+    const divider2 = document.createElement("span");
+    divider2.style.cssText =
+      "width:1px;height:20px;background:rgba(128,128,128,0.35);margin:0 4px;";
+    bar.appendChild(divider2);
 
     bar.appendChild(barBtn("Loop", !!settings.loop, () => toggleSetting("loop")));
     bar.appendChild(barBtn("Skip sponsors", !!settings.skipSponsors, () => toggleSetting("skipSponsors")));
