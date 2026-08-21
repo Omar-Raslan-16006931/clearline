@@ -17,9 +17,6 @@
     "https://cleartube.vercel.app/*",
     "https://unpkg.com/*"
   ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; object-src 'self'"
-  },
   "background": {
     "service_worker": "background.js"
   },
