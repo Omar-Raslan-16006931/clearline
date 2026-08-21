@@ -136,19 +136,26 @@
     footer { font-size: 10.5px; color: var(--muted); text-align: center; margin-top: 12px; }
 
     #updateBanner {
-      display: none; align-items: center; gap: 8px;
+      display: none; flex-direction: column; gap: 7px;
       margin-bottom: 10px; padding: 9px 10px; border-radius: 10px;
       background: var(--accent-soft); border: 1px solid var(--accent);
     }
     #updateBanner.show { display: flex; }
+    #updateBanner .row1 { display: flex; align-items: center; gap: 8px; }
     #updateBanner .text { flex: 1; min-width: 0; }
     #updateBanner .label { font-weight: 600; font-size: 12px; color: var(--accent-ink); }
     #updateBanner .sub { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
-    #updateBanner a.dl {
+    #updateBanner a.dl, #updateBanner button.dl {
       flex: none; font: inherit; font-size: 11.5px; font-weight: 600; text-decoration: none;
       background: var(--accent); color: #fff; padding: 6px 10px; border-radius: 8px;
+      border: 0; cursor: pointer;
     }
-    #updateBanner a.dl:hover { background: var(--accent-ink); }
+    #updateBanner a.dl:hover, #updateBanner button.dl:hover { background: var(--accent-ink); }
+    #updateBanner .actions { display: flex; gap: 6px; }
+    #updateBanner button.dl.secondary {
+      background: transparent; color: var(--accent-ink); border: 1px solid var(--accent);
+    }
+    #updateBanner button.dl.secondary:hover { background: #fff; }
 
   </style>
 </head>
@@ -163,11 +170,17 @@
     </header>
 
     <div id="updateBanner">
-      <div class="text">
-        <div class="label" data-i18n="updateLabel">Update available</div>
-        <div class="sub" id="updateSub"></div>
+      <div class="row1">
+        <div class="text">
+          <div class="label" data-i18n="updateLabel">Update available</div>
+          <div class="sub" id="updateSub"></div>
+        </div>
+        <a class="dl" id="updateDl" href="#" data-i18n="updateGet">Get it</a>
       </div>
-      <a class="dl" id="updateDl" href="#" data-i18n="updateGet">Get it</a>
+      <div class="actions" id="updateActions" style="display:none;">
+        <button class="dl" id="updateShow" data-i18n="updateShow">Show downloaded file</button>
+        <button class="dl secondary" id="updateReload" data-i18n="updateReload">Reload extension</button>
+      </div>
     </div>
 
     <div class="row">

@@ -1,5 +1,5 @@
 {
-  "version": "1.10.0",
+  "version": "1.11.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
-  "notes": "Magnetic speed slider (0.25x-100x), live-refresh quality picker with raw-format debug view for 1080p/Enhanced bitrate."
+  "notes": "Updates now auto-download to your Downloads folder in the background — no click needed. Unzip over your ClearTube folder and hit Reload."
 }

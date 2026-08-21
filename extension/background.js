@@ -249,6 +249,29 @@ function isNewer(remote, local) {
   return false;
 }
 
+/* Sideloaded ("Load unpacked") extensions have no API to silently replace
+ * their own files — that's a Chrome platform restriction, not something we
+ * can code around. The closest thing to "auto update" without publishing to
+ * the Chrome Web Store is: detect a new version, fetch the zip into the
+ * Downloads folder ourselves (no click required), then tell the user it's
+ * ready to drop in. We dedupe so the same version isn't fetched twice. */
+async function autoFetchUpdate(info) {
+  try {
+    const state = await chrome.storage.local.get({ autoFetchedVersion: null });
+    if (state.autoFetchedVersion === info.version) return; // already grabbed this one
+    const filename = "ClearTube-updates/cleartube-v" + info.version + ".zip";
+    chrome.downloads.download(
+      { url: info.url, filename, conflictAction: "overwrite", saveAs: false },
+      (downloadId) => {
+        if (chrome.runtime.lastError || !downloadId) return; // stay quiet, banner still offers the manual link
+        chrome.storage.local.set({ autoFetchedVersion: info.version, autoFetchedDownloadId: downloadId });
+      }
+    );
+  } catch (e) {
+    /* non-fatal — the popup's manual "Get it" link still works */
+  }
+}
+
 async function checkForUpdate() {
   try {
     const res = await fetch(VERSION_CHECK_URL, { cache: "no-store" });
@@ -256,18 +279,18 @@ async function checkForUpdate() {
     const data = await res.json();
     const current = chrome.runtime.getManifest().version;
     if (data && data.version && isNewer(data.version, current)) {
-      await chrome.storage.local.set({
-        updateInfo: {
-          version: data.version,
-          url: data.url || "https://cleartube.vercel.app/cleartube.zip",
-          notes: data.notes || "",
-          checkedAt: Date.now(),
-        },
-      });
+      const info = {
+        version: data.version,
+        url: data.url || "https://cleartube.vercel.app/cleartube.zip",
+        notes: data.notes || "",
+        checkedAt: Date.now(),
+      };
+      await chrome.storage.local.set({ updateInfo: info });
       chrome.action.setBadgeText({ text: "1" });
       chrome.action.setBadgeBackgroundColor({ color: "#c67f56" });
+      autoFetchUpdate(info);
     } else {
-      await chrome.storage.local.remove("updateInfo");
+      await chrome.storage.local.remove(["updateInfo", "autoFetchedVersion", "autoFetchedDownloadId"]);
       chrome.action.setBadgeText({ text: "" });
     }
   } catch (e) {

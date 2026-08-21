@@ -21,6 +21,9 @@ const I18N = {
     updateLabel: "Update available",
     updateGet: "Get it",
     updateSubFn: (v) => "Version " + v + " is ready to download.",
+    updateSubDownloaded: (v) => "Version " + v + " downloaded. Unzip it into your ClearTube folder, then reload.",
+    updateShow: "Show downloaded file",
+    updateReload: "Reload extension",
     dlQuality: "Choose quality (up to 4K)",
   },
   ar: {
@@ -44,6 +47,9 @@ const I18N = {
     updateLabel: "تحديث متوفر",
     updateGet: "احصل عليه",
     updateSubFn: (v) => "الإصدار " + v + " جاهز للتنزيل.",
+    updateSubDownloaded: (v) => "تم تنزيل الإصدار " + v + ". فك الضغط في مجلد ClearTube ثم أعد التحميل.",
+    updateShow: "إظهار الملف الذي تم تنزيله",
+    updateReload: "إعادة تحميل الإضافة",
     dlQuality: "اختر الجودة (حتى 4K)",
   },
 };
@@ -190,25 +196,50 @@ const SERVICES = {
 
 /* ================= update banner ================= */
 let updateInfo = null;
+let autoFetchedVersion = null;
+let autoFetchedDownloadId = null;
+
 function refreshUpdateBanner() {
   const banner = document.getElementById("updateBanner");
   const sub = document.getElementById("updateSub");
   const dl = document.getElementById("updateDl");
+  const actions = document.getElementById("updateActions");
   if (!banner) return;
-  if (updateInfo && updateInfo.version) {
-    banner.classList.add("show");
+  if (!updateInfo || !updateInfo.version) {
+    banner.classList.remove("show");
+    return;
+  }
+  banner.classList.add("show");
+  const downloaded = autoFetchedVersion === updateInfo.version && autoFetchedDownloadId != null;
+  if (downloaded) {
+    sub.textContent = T("updateSubDownloaded")(updateInfo.version);
+    dl.style.display = "none";
+    actions.style.display = "flex";
+  } else {
     sub.textContent = T("updateSubFn")(updateInfo.version);
     dl.href = updateInfo.url || "https://cleartube.vercel.app/cleartube.zip";
-  } else {
-    banner.classList.remove("show");
+    dl.style.display = "";
+    actions.style.display = "none";
   }
 }
-chrome.storage.local.get({ updateInfo: null }, (r) => {
+chrome.storage.local.get({ updateInfo: null, autoFetchedVersion: null, autoFetchedDownloadId: null }, (r) => {
   updateInfo = r.updateInfo || null;
+  autoFetchedVersion = r.autoFetchedVersion || null;
+  autoFetchedDownloadId = r.autoFetchedDownloadId || null;
   refreshUpdateBanner();
 });
 document.getElementById("updateDl").addEventListener("click", () => {
   chrome.action.setBadgeText({ text: "" });
+});
+document.getElementById("updateShow").addEventListener("click", () => {
+  if (autoFetchedDownloadId != null) {
+    chrome.downloads.show(autoFetchedDownloadId);
+  } else {
+    chrome.downloads.showDefaultFolder();
+  }
+});
+document.getElementById("updateReload").addEventListener("click", () => {
+  chrome.runtime.reload();
 });
 
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
