@@ -1,5 +1,5 @@
 {
-  "version": "1.9.0",
+  "version": "1.10.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
-  "notes": "Added a quality picker — download up to 4K/Enhanced-bitrate with video+audio merged in-browser."
+  "notes": "Magnetic speed slider (0.25x-100x), live-refresh quality picker with raw-format debug view for 1080p/Enhanced bitrate."
 }

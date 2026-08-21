@@ -18,6 +18,17 @@
   const statusLabel = el("statusLabel");
   const statusBar = el("statusBar");
   const statusNote = el("statusNote");
+  const debugToggle = el("debugToggle");
+  const debugBox = el("debugBox");
+
+  if (debugToggle) {
+    debugToggle.addEventListener("click", () => {
+      debugBox.classList.toggle("show");
+      debugToggle.textContent = debugBox.classList.contains("show")
+        ? "Hide raw formats"
+        : "Show raw formats (for troubleshooting)";
+    });
+  }
 
   function showStatus(label, pct, note, isError) {
     statusBox.classList.add("show");
@@ -352,6 +363,24 @@
     }
     if (!shown) {
       audioList.innerHTML = '<div id="empty">No separate audio track found.</div>';
+    }
+
+    // Raw dump so a stuck case ("no 1080p / no Enhanced bitrate") can be
+    // diagnosed from what YouTube actually served, instead of guessing.
+    if (debugBox) {
+      const lines = adaptive
+        .filter(isVideoFmt)
+        .sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bitrate || 0) - (a.bitrate || 0))
+        .map(
+          (f) =>
+            "itag " + f.itag + "  " + (f.qualityLabel || "?") +
+            "  " + (containerOf(f.mimeType) || f.mimeType) +
+            "  " + fmtBitrate(f.bitrate) +
+            (f.height ? "  " + f.width + "x" + f.height : "")
+        );
+      debugBox.textContent = lines.length
+        ? "Raw adaptive video formats YouTube returned for this tab:\n" + lines.join("\n")
+        : "No adaptive video formats were present in this tab's player response.";
     }
   }
 

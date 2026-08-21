@@ -37,4 +37,13 @@
   window.addEventListener("yt-navigate-finish", reGrab, true);
   document.addEventListener("yt-page-data-updated", reGrab, true);
   window.addEventListener("load", reGrab, true);
+
+  // The quality picker asks for a fresh read right before it opens — the
+  // page's own player response can gain higher-bitrate / Premium variants
+  // after the initial SSR snapshot, so re-grab live instead of relying only
+  // on the cached copy from page load.
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data || e.data.source !== "YTLS_REQUEST_GRAB") return;
+    collect();
+  });
 })();

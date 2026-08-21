@@ -37,11 +37,19 @@
     latestVideo = e.data.payload;
   });
 
-  // Popup asks the content script for the current video's formats.
+  // Popup asks the content script for the current video's formats. Ask the
+  // page context to re-read window.ytInitialPlayerResponse right now first —
+  // YouTube can attach higher-bitrate / Premium variants to that object
+  // after the initial page load, so a live read beats the cached snapshot.
   try {
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg && msg.type === "GET_FORMATS") {
-        sendResponse({ video: latestVideo });
+        const before = latestVideo;
+        try { window.postMessage({ source: "YTLS_REQUEST_GRAB" }, "*"); } catch (_) {}
+        setTimeout(() => {
+          sendResponse({ video: latestVideo || before });
+        }, 250);
+        return true;
       }
       return false;
     });
@@ -512,14 +520,17 @@
   }
 
   /* ---------- apply everything ---------- */
-  /* ---------- PLAYBACK SPEED (up to 50x) ---------- */
-  const SPEED_PRESETS = [0.5, 1, 1.5, 2, 3, 5, 10, 16, 30, 50];
+  /* ---------- PLAYBACK SPEED (0.25x – 100x) ---------- */
+  const SPEED_MIN = 0.25;
+  const SPEED_MAX = 100;
+  // Points the slider "sticks" to when the thumb passes near them.
+  const SPEED_SNAP_POINTS = [0.25, 0.5, 1, 1.5, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
   let turboTimer = null;
 
   function applySpeed() {
     const v = document.querySelector("video");
     if (!v) return;
-    const s = Math.max(0.1, Math.min(50, Number(settings.speed) || 1));
+    const s = Math.max(SPEED_MIN, Math.min(SPEED_MAX, Number(settings.speed) || 1));
     // Browsers clamp playbackRate at 16x, so above that we nudge currentTime
     // forward on a timer ("turbo") to reach the requested speed.
     try {
@@ -546,14 +557,67 @@
       turboTimer = null;
     }
   }
-  function setSpeed(s) {
+  function setSpeed(s, persist) {
     settings.speed = s;
-    try {
-      chrome.storage.sync.set({ speed: s });
-    } catch (_) {}
+    if (persist !== false) {
+      try {
+        chrome.storage.sync.set({ speed: s });
+      } catch (_) {}
+    }
     applySpeed();
-    updateBar();
   }
+  function fmtSpeed(s) {
+    return (Math.abs(s - Math.round(s)) < 0.001 ? Math.round(s) : Math.round(s * 100) / 100) + "×";
+  }
+
+  /* ---------- speed slider: logarithmic position with magnetic snap points ---------- */
+  const SLIDER_STEPS = 1000;
+  function speedToPos(s) {
+    const c = Math.max(SPEED_MIN, Math.min(SPEED_MAX, s));
+    return Math.round((SLIDER_STEPS * Math.log(c / SPEED_MIN)) / Math.log(SPEED_MAX / SPEED_MIN));
+  }
+  function posToSpeed(pos) {
+    return SPEED_MIN * Math.pow(SPEED_MAX / SPEED_MIN, pos / SLIDER_STEPS);
+  }
+  function niceRound(s) {
+    if (s < 1) return Math.round(s * 20) / 20; // nearest 0.05
+    if (s < 10) return Math.round(s * 10) / 10; // nearest 0.1
+    return Math.round(s); // nearest 1
+  }
+  function magnetize(s) {
+    // Logarithmic distance so the "pull" toward a tick feels equal at both
+    // ends of a 0.25x–100x range, not just near the small numbers.
+    let best = null,
+      bestDist = Infinity;
+    for (const p of SPEED_SNAP_POINTS) {
+      const dist = Math.abs(Math.log(s / p));
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = p;
+      }
+    }
+    return bestDist < 0.06 ? best : niceRound(s);
+  }
+  function ensureSpeedSliderStyle() {
+    if (document.getElementById("ct-speed-style")) return;
+    const style = document.createElement("style");
+    style.id = "ct-speed-style";
+    style.textContent =
+      "#ct-speed-slider{-webkit-appearance:none;appearance:none;width:220px;height:6px;border-radius:999px;" +
+      "background:rgba(128,128,128,0.35);outline:none;vertical-align:middle;margin:0;}" +
+      "#ct-speed-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;" +
+      "border-radius:50%;background:#ff5277;border:2px solid #fff;cursor:pointer;margin-top:-4px;" +
+      "box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
+      "#ct-speed-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
+      "border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
+      "#ct-speed-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
+      "#ct-speed-ticks{position:relative;width:220px;height:12px;}" +
+      "#ct-speed-ticks b{position:absolute;top:1px;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
+      "color:var(--yt-spec-text-secondary,#aaa);cursor:pointer;user-select:none;}" +
+      "#ct-speed-ticks b:hover{color:#ff5277;}";
+    document.head.appendChild(style);
+  }
+  const SPEED_TICK_LABELS = [1, 2, 3, 5, 10, 20, 30, 40, 50, 100];
 
   /* ---------- ON-PAGE CONTROL BAR (below the video) ---------- */
   function barBtn(text, active, onClick, title) {
@@ -623,10 +687,65 @@
       "font:600 12px Roboto,system-ui,sans-serif;color:var(--yt-spec-text-secondary,#aaa);margin-left:6px;";
     bar.appendChild(spLabel);
 
-    const cur = Number(settings.speed) || 1;
-    SPEED_PRESETS.forEach((s) => {
-      bar.appendChild(barBtn(s + "×", Math.abs(cur - s) < 0.001, () => setSpeed(s)));
+    ensureSpeedSliderStyle();
+    const cur = Math.max(SPEED_MIN, Math.min(SPEED_MAX, Number(settings.speed) || 1));
+
+    const sliderCol = document.createElement("span");
+    sliderCol.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;";
+
+    const sliderRow = document.createElement("span");
+    sliderRow.style.cssText = "display:inline-flex;align-items:center;gap:8px;";
+
+    const valueLabel = document.createElement("span");
+    valueLabel.textContent = fmtSpeed(cur);
+    valueLabel.style.cssText =
+      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:46px;";
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.id = "ct-speed-slider";
+    slider.min = "0";
+    slider.max = String(SLIDER_STEPS);
+    slider.step = "1";
+    slider.value = String(speedToPos(cur));
+    slider.title = "Drag to set playback speed (0.25×–100×)";
+
+    slider.addEventListener("input", () => {
+      const raw = posToSpeed(Number(slider.value));
+      const snapped = magnetize(raw);
+      const snappedPos = speedToPos(snapped);
+      // Only visually "stick" the thumb when it's genuinely close to a tick —
+      // otherwise free dragging would feel jumpy.
+      if (Math.abs(snappedPos - Number(slider.value)) <= 15) {
+        slider.value = String(snappedPos);
+      }
+      valueLabel.textContent = fmtSpeed(snapped);
+      setSpeed(snapped, false); // live preview, no storage write yet
     });
+    slider.addEventListener("change", () => {
+      setSpeed(magnetize(posToSpeed(Number(slider.value))), true);
+    });
+
+    sliderRow.appendChild(slider);
+    sliderRow.appendChild(valueLabel);
+
+    const ticks = document.createElement("span");
+    ticks.id = "ct-speed-ticks";
+    SPEED_TICK_LABELS.forEach((p) => {
+      const t = document.createElement("b");
+      t.textContent = p + "×";
+      t.style.left = (speedToPos(p) / SLIDER_STEPS) * 100 + "%";
+      t.addEventListener("click", () => {
+        slider.value = String(speedToPos(p));
+        valueLabel.textContent = fmtSpeed(p);
+        setSpeed(p, true);
+      });
+      ticks.appendChild(t);
+    });
+
+    sliderCol.appendChild(sliderRow);
+    sliderCol.appendChild(ticks);
+    bar.appendChild(sliderCol);
 
     const divider = document.createElement("span");
     divider.style.cssText =

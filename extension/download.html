@@ -106,6 +106,18 @@
 
     #empty, #loading { font-size: 13px; color: var(--muted); padding: 6px 4px; }
     footer { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+    #debugToggle {
+      font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0;
+      text-decoration: underline; cursor: pointer; padding: 4px; margin: 2px auto 0; display: block;
+    }
+    #debugBox {
+      display: none; font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 11px; white-space: pre-wrap; word-break: break-all;
+      background: #f7f2e6; border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px; margin-top: 8px; color: var(--ink); max-height: 220px; overflow: auto;
+    }
+    #debugBox.show { display: block; }
   </style>
 </head>
 <body>
@@ -137,6 +149,8 @@
     </div>
 
     <footer>High-quality options fetch a ~30MB one-time media engine to merge video and audio locally. Nothing leaves your computer.</footer>
+    <button id="debugToggle">Show raw formats (for troubleshooting)</button>
+    <div id="debugBox"></div>
   </div>
 
   <script src="ffmpeg/ffmpeg.js"></script>
