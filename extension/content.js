@@ -17,6 +17,8 @@
     volumeBoost: 100,
     blockAds: true,
     speed: 1,
+    ambientGlow: true,
+    autoFadeUI: true,
   };
   let settings = { ...DEFAULTS };
 
@@ -91,6 +93,8 @@
     v.addEventListener("timeupdate", () => trySkip(v));
     v.addEventListener("durationchange", renderSegmentBar);
     v.addEventListener("loadedmetadata", renderSegmentBar);
+    v.addEventListener("play", () => { checkAmbientConditions(); checkAutoFadeConditions(); });
+    v.addEventListener("pause", () => { checkAmbientConditions(); checkAutoFadeConditions(); });
     applyLoop();
     applySpeed();
   }
@@ -820,6 +824,203 @@
     );
   }
 
+  /* ---------- AMBIENT GLOW (dynamic video color behind player) ---------- */
+  const AMBIENT_STYLE_ID = "ct-ambient-style";
+  const AMBIENT_CSS = `
+    #ct-ambient-glow {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      transition: box-shadow 0.3s ease;
+    }
+  `;
+  let ambientRaf = null;
+  let ambientCanvas = null;
+  let ambientCtx = null;
+  let ambientLastSample = 0;
+  let ambientActive = false;
+  const ambientReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  function isTheaterMode() {
+    const flexy = document.querySelector("ytd-watch-flexy");
+    return !!(flexy && flexy.hasAttribute("theater") && !flexy.hasAttribute("fullscreen"));
+  }
+
+  function ensureAmbientStyle() {
+    if (document.getElementById(AMBIENT_STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = AMBIENT_STYLE_ID;
+    s.textContent = AMBIENT_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  function startAmbientGlow() {
+    if (ambientActive) return;
+    ambientActive = true;
+    ensureAmbientStyle();
+    if (!ambientCanvas) {
+      ambientCanvas = document.createElement("canvas");
+      ambientCanvas.width = 1;
+      ambientCanvas.height = 1;
+      ambientCtx = ambientCanvas.getContext("2d", { willReadFrequently: true });
+    }
+    // Ensure the glow div exists.
+    let glow = document.getElementById("ct-ambient-glow");
+    if (!glow) {
+      glow = document.createElement("div");
+      glow.id = "ct-ambient-glow";
+      // Insert inside the player's full-bleed container, behind the player.
+      const mount =
+        document.getElementById("full-bleed-container") ||
+        document.querySelector("ytd-watch-flexy");
+      if (mount) {
+        mount.style.position = mount.style.position || "relative";
+        mount.prepend(glow);
+      }
+    }
+    ambientLastSample = 0;
+    ambientRaf = requestAnimationFrame(ambientFrame);
+  }
+
+  function stopAmbientGlow() {
+    if (!ambientActive) return;
+    ambientActive = false;
+    if (ambientRaf) {
+      cancelAnimationFrame(ambientRaf);
+      ambientRaf = null;
+    }
+    const glow = document.getElementById("ct-ambient-glow");
+    if (glow) glow.remove();
+  }
+
+  function ambientFrame(ts) {
+    if (!ambientActive) return;
+    // Throttle to ~120ms between samples (~8fps).
+    if (ts - ambientLastSample >= 120) {
+      ambientLastSample = ts;
+      const v = document.querySelector("video");
+      const glow = document.getElementById("ct-ambient-glow");
+      if (v && glow && v.readyState >= 2 && !v.paused) {
+        try {
+          ambientCtx.drawImage(v, 0, 0, 1, 1);
+          const px = ambientCtx.getImageData(0, 0, 1, 1).data;
+          const r = px[0], g = px[1], b = px[2];
+          glow.style.boxShadow =
+            "0 0 120px 60px rgba(" + r + "," + g + "," + b + ",0.5), " +
+            "0 0 240px 120px rgba(" + r + "," + g + "," + b + ",0.3)";
+        } catch (_) {
+          // CORS / tainted canvas — stop gracefully.
+          stopAmbientGlow();
+          return;
+        }
+      }
+    }
+    ambientRaf = requestAnimationFrame(ambientFrame);
+  }
+
+  function checkAmbientConditions() {
+    const shouldRun =
+      settings.ambientGlow &&
+      isTheaterMode() &&
+      !ambientReducedMotion.matches &&
+      !document.hidden;
+    const v = document.querySelector("video");
+    const playing = v && !v.paused && !v.ended;
+    if (shouldRun && playing) {
+      startAmbientGlow();
+    } else {
+      stopAmbientGlow();
+    }
+  }
+
+  // Respond to OS-level motion preference changes.
+  try {
+    ambientReducedMotion.addEventListener("change", checkAmbientConditions);
+  } catch (_) {}
+
+  /* ---------- AUTO-FADE UI (hide page chrome on idle in theater) ---------- */
+  const FADE_STYLE_ID = "ct-fade-style";
+  const FADE_CSS = `
+    ytd-watch-flexy.ct-idle #below,
+    ytd-watch-flexy.ct-idle #secondary,
+    ytd-watch-flexy.ct-idle #masthead-container {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    ytd-watch-flexy #below,
+    ytd-watch-flexy #secondary,
+    ytd-watch-flexy #masthead-container {
+      transition: opacity 0.4s ease;
+    }
+  `;
+  const IDLE_TIMEOUT = 2500;
+  let fadeActive = false;
+  let fadeTimer = null;
+
+  function ensureFadeStyle() {
+    if (document.getElementById(FADE_STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = FADE_STYLE_ID;
+    s.textContent = FADE_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  function setIdle(on) {
+    const flexy = document.querySelector("ytd-watch-flexy");
+    if (flexy) flexy.classList.toggle("ct-idle", on);
+  }
+
+  function resetIdleTimer() {
+    // Any user activity → immediately un-idle and restart the countdown.
+    setIdle(false);
+    clearTimeout(fadeTimer);
+    const v = document.querySelector("video");
+    if (fadeActive && v && !v.paused && !v.ended) {
+      fadeTimer = setTimeout(() => setIdle(true), IDLE_TIMEOUT);
+    }
+  }
+
+  function onFadeActivity() {
+    if (fadeActive) resetIdleTimer();
+  }
+
+  function startAutoFade() {
+    if (fadeActive) return;
+    fadeActive = true;
+    ensureFadeStyle();
+    document.addEventListener("mousemove", onFadeActivity, true);
+    document.addEventListener("mousedown", onFadeActivity, true);
+    document.addEventListener("keydown", onFadeActivity, true);
+    resetIdleTimer();
+  }
+
+  function stopAutoFade() {
+    if (!fadeActive) return;
+    fadeActive = false;
+    clearTimeout(fadeTimer);
+    fadeTimer = null;
+    setIdle(false);
+    document.removeEventListener("mousemove", onFadeActivity, true);
+    document.removeEventListener("mousedown", onFadeActivity, true);
+    document.removeEventListener("keydown", onFadeActivity, true);
+  }
+
+  function checkAutoFadeConditions() {
+    const shouldRun =
+      settings.autoFadeUI &&
+      isTheaterMode() &&
+      !document.hidden;
+    const v = document.querySelector("video");
+    const playing = v && !v.paused && !v.ended;
+    if (shouldRun && playing) {
+      startAutoFade();
+    } else {
+      stopAutoFade();
+    }
+  }
+
   function applyAll() {
     setShortsHidden(settings.hideShorts);
     applySpeed();
@@ -833,6 +1034,8 @@
     loadDislikes();
     setAdStyle(settings.blockAds);
     handleAds();
+    checkAmbientConditions();
+    checkAutoFadeConditions();
   }
 
   try {
@@ -871,6 +1074,10 @@
     if (settings.showDislikes && lastDislikes != null) {
       injectDislikes();
     }
+    // Re-evaluate theater-mode dependent features (ambient glow, auto-fade)
+    // when YouTube's DOM changes (e.g. theater attribute toggled).
+    checkAmbientConditions();
+    checkAutoFadeConditions();
   });
 
   function boot() {
@@ -880,6 +1087,11 @@
         sbTimeSaved = r.sbTimeSaved || 0;
       });
     } catch (_) {}
+    // Pause/resume ambient glow and auto-fade when tab visibility changes.
+    document.addEventListener("visibilitychange", () => {
+      checkAmbientConditions();
+      checkAutoFadeConditions();
+    });
     loadSettings(() => {
       applyAll();
       mo.observe(document.documentElement, { childList: true, subtree: true });

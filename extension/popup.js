@@ -25,6 +25,8 @@ const I18N = {
     updateShow: "Show downloaded file",
     updateReload: "Reload extension",
     dlQuality: "Choose quality (up to 4K)",
+    ambientGlow: "Ambient glow", ambientGlowSub: "Color aura · theater",
+    autoFadeUI: "Fade on idle", autoFadeUISub: "Hide page · theater",
   },
   ar: {
     title: "Clear<b>Tube</b>",
@@ -51,6 +53,8 @@ const I18N = {
     updateShow: "إظهار الملف الذي تم تنزيله",
     updateReload: "إعادة تحميل الإضافة",
     dlQuality: "اختر الجودة (حتى 4K)",
+    ambientGlow: "إضاءة محيطية", ambientGlowSub: "هالة ملونة · المسرح",
+    autoFadeUI: "إخفاء عند السكون", autoFadeUISub: "إخفاء الصفحة · المسرح",
   },
 };
 let LANG = "en";
@@ -85,6 +89,7 @@ langArBtn.addEventListener("click", () => { chrome.storage.sync.set({ lang: "ar"
 const DEFAULTS = {
   loop: true, hideShorts: true, redirectShorts: false, skipSponsors: true,
   showDislikes: true, volumeBoost: 100, blockAds: true, lang: "en",
+  ambientGlow: true, autoFadeUI: true,
 };
 const loopEl = document.getElementById("loop");
 const blockAdsEl = document.getElementById("blockAds");
@@ -95,6 +100,8 @@ const dislikesEl = document.getElementById("showDislikes");
 const volumeEl = document.getElementById("volume");
 const volValEl = document.getElementById("volVal");
 const redirectRow = document.getElementById("redirectRow");
+const ambientGlowEl = document.getElementById("ambientGlow");
+const autoFadeUIEl = document.getElementById("autoFadeUI");
 
 function syncNested() {
   redirectRow.classList.toggle("off", !hideEl.checked);
@@ -112,6 +119,8 @@ chrome.storage.sync.get(DEFAULTS, (s) => {
   hideEl.checked = s.hideShorts;
   redirectEl.checked = s.redirectShorts;
   dislikesEl.checked = s.showDislikes;
+  ambientGlowEl.checked = s.ambientGlow;
+  autoFadeUIEl.checked = s.autoFadeUI;
   volumeEl.value = s.volumeBoost;
   volValEl.textContent = s.volumeBoost + "%";
   paintVol();
@@ -127,6 +136,8 @@ function save() {
     hideShorts: hideEl.checked,
     redirectShorts: redirectEl.checked,
     showDislikes: dislikesEl.checked,
+    ambientGlow: ambientGlowEl.checked,
+    autoFadeUI: autoFadeUIEl.checked,
     volumeBoost: Number(volumeEl.value),
   });
 }
@@ -136,6 +147,8 @@ skipEl.addEventListener("change", save);
 dislikesEl.addEventListener("change", save);
 hideEl.addEventListener("change", () => { syncNested(); save(); });
 redirectEl.addEventListener("change", save);
+ambientGlowEl.addEventListener("change", save);
+autoFadeUIEl.addEventListener("change", save);
 volumeEl.addEventListener("input", () => {
   volValEl.textContent = volumeEl.value + "%";
   paintVol();
