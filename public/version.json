@@ -1,5 +1,5 @@
 {
-  "version": "1.12.1",
+  "version": "1.13.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
-  "notes": "Decluttered the speed-slider tick labels to a single clean row (dragging still snaps to every point, just fewer are labeled)."
+  "notes": "Added dynamic ambient background lighting and auto-fade UI for cinema/theater mode."
 }
