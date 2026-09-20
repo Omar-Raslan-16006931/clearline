@@ -824,15 +824,30 @@
     );
   }
 
-  /* ---------- AMBIENT GLOW (dynamic video color behind player) ---------- */
+  /* ---------- AMBIENT GLOW (dynamic video color behind/around player) ---------- */
   const AMBIENT_STYLE_ID = "ct-ambient-style";
   const AMBIENT_CSS = `
     #ct-ambient-glow {
       position: absolute;
-      inset: 0;
-      z-index: -1;
+      inset: -20px;
+      z-index: 0;
       pointer-events: none;
-      transition: box-shadow 0.3s ease;
+      border-radius: 16px;
+      filter: blur(60px);
+      opacity: 0.85;
+      transition: background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease;
+    }
+    #full-bleed-container,
+    #player-theater-container,
+    #player-container-outer,
+    #player-container-inner,
+    ytd-watch-flexy[theater] #player-container,
+    ytd-watch-grid[theater] #player-container {
+      overflow: visible !important;
+    }
+    #movie_player.html5-video-player {
+      position: relative;
+      z-index: 1;
     }
   `;
   let ambientRaf = null;
@@ -843,8 +858,20 @@
   const ambientReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   function isTheaterMode() {
-    const flexy = document.querySelector("ytd-watch-flexy");
-    return !!(flexy && flexy.hasAttribute("theater") && !flexy.hasAttribute("fullscreen"));
+    if (location.pathname !== "/watch") return false;
+    const flexy = document.querySelector("ytd-watch-flexy, ytd-watch-grid");
+    if (flexy) {
+      if (flexy.hasAttribute("theater") || flexy.hasAttribute("theater-requested_")) {
+        return !flexy.hasAttribute("fullscreen");
+      }
+    }
+    const tc = document.getElementById("player-theater-container");
+    if (tc && tc.offsetHeight > 100) return true;
+    const player = document.getElementById("movie_player");
+    if (player && player.classList.contains("ytp-big-mode") && !document.fullscreenElement) {
+      return true;
+    }
+    return false;
   }
 
   function ensureAmbientStyle() {
@@ -861,26 +888,28 @@
     ensureAmbientStyle();
     if (!ambientCanvas) {
       ambientCanvas = document.createElement("canvas");
-      ambientCanvas.width = 1;
-      ambientCanvas.height = 1;
+      ambientCanvas.width = 16;
+      ambientCanvas.height = 9;
       ambientCtx = ambientCanvas.getContext("2d", { willReadFrequently: true });
     }
-    // Ensure the glow div exists.
+    ensureGlowElement();
+    ambientLastSample = 0;
+    ambientRaf = requestAnimationFrame(ambientFrame);
+  }
+
+  function ensureGlowElement() {
+    const player = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
+    if (!player || !player.parentElement) return null;
+
     let glow = document.getElementById("ct-ambient-glow");
     if (!glow) {
       glow = document.createElement("div");
       glow.id = "ct-ambient-glow";
-      // Insert inside the player's full-bleed container, behind the player.
-      const mount =
-        document.getElementById("full-bleed-container") ||
-        document.querySelector("ytd-watch-flexy");
-      if (mount) {
-        mount.style.position = mount.style.position || "relative";
-        mount.prepend(glow);
-      }
+      player.parentElement.style.position = "relative";
+      player.parentElement.style.overflow = "visible";
+      player.parentElement.insertBefore(glow, player);
     }
-    ambientLastSample = 0;
-    ambientRaf = requestAnimationFrame(ambientFrame);
+    return glow;
   }
 
   function stopAmbientGlow() {
@@ -892,27 +921,58 @@
     }
     const glow = document.getElementById("ct-ambient-glow");
     if (glow) glow.remove();
+    const player = document.getElementById("movie_player");
+    if (player) player.style.boxShadow = "";
   }
 
   function ambientFrame(ts) {
     if (!ambientActive) return;
-    // Throttle to ~120ms between samples (~8fps).
+    // Sample every ~120ms for smooth 8-9fps color transitions with zero frame drops
     if (ts - ambientLastSample >= 120) {
       ambientLastSample = ts;
       const v = document.querySelector("video");
-      const glow = document.getElementById("ct-ambient-glow");
-      if (v && glow && v.readyState >= 2 && !v.paused) {
+      const player = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
+      const glow = ensureGlowElement();
+
+      if (v && v.readyState >= 2 && !v.paused && v.videoWidth > 0) {
         try {
-          ambientCtx.drawImage(v, 0, 0, 1, 1);
-          const px = ambientCtx.getImageData(0, 0, 1, 1).data;
-          const r = px[0], g = px[1], b = px[2];
-          glow.style.boxShadow =
-            "0 0 120px 60px rgba(" + r + "," + g + "," + b + ",0.5), " +
-            "0 0 240px 120px rgba(" + r + "," + g + "," + b + ",0.3)";
+          ambientCtx.drawImage(v, 0, 0, 16, 9);
+          const imgData = ambientCtx.getImageData(0, 0, 16, 9).data;
+          let rTotal = 0, gTotal = 0, bTotal = 0, count = 0;
+          for (let i = 0; i < imgData.length; i += 4) {
+            rTotal += imgData[i];
+            gTotal += imgData[i + 1];
+            bTotal += imgData[i + 2];
+            count++;
+          }
+          let r = Math.round(rTotal / count);
+          let g = Math.round(gTotal / count);
+          let b = Math.round(bTotal / count);
+
+          // Boost color vibrancy so the ambient light is vivid
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          if (max > min && max > 20) {
+            const boost = 1.35;
+            r = Math.min(255, Math.round(r * boost));
+            g = Math.min(255, Math.round(g * boost));
+            b = Math.min(255, Math.round(b * boost));
+          }
+
+          const shadow =
+            "0 0 90px 35px rgba(" + r + "," + g + "," + b + ",0.55), " +
+            "0 0 180px 80px rgba(" + r + "," + g + "," + b + ",0.30)";
+
+          if (glow) {
+            glow.style.background = "radial-gradient(ellipse at center, rgba(" + r + "," + g + "," + b + ",0.75) 0%, rgba(" + r + "," + g + "," + b + ",0.35) 70%, transparent 100%)";
+            glow.style.boxShadow = shadow;
+          }
+          if (player) {
+            player.style.boxShadow = "0 0 60px 20px rgba(" + r + "," + g + "," + b + ",0.45)";
+            player.style.transition = "box-shadow 0.35s ease";
+          }
         } catch (_) {
-          // CORS / tainted canvas — stop gracefully.
-          stopAmbientGlow();
-          return;
+          // Keep loop alive across transient canvas read issues
         }
       }
     }
@@ -920,39 +980,45 @@
   }
 
   function checkAmbientConditions() {
-    const shouldRun =
-      settings.ambientGlow &&
-      isTheaterMode() &&
-      !ambientReducedMotion.matches &&
-      !document.hidden;
+    const isWatch = location.pathname === "/watch";
     const v = document.querySelector("video");
     const playing = v && !v.paused && !v.ended;
-    if (shouldRun && playing) {
+    const shouldRun =
+      settings.ambientGlow &&
+      isWatch &&
+      !document.hidden &&
+      playing;
+
+    if (shouldRun) {
       startAmbientGlow();
     } else {
       stopAmbientGlow();
     }
   }
 
-  // Respond to OS-level motion preference changes.
-  try {
-    ambientReducedMotion.addEventListener("change", checkAmbientConditions);
-  } catch (_) {}
-
-  /* ---------- AUTO-FADE UI (hide page chrome on idle in theater) ---------- */
+  /* ---------- AUTO-FADE UI (hide page chrome on idle in theater mode) ---------- */
   const FADE_STYLE_ID = "ct-fade-style";
   const FADE_CSS = `
-    ytd-watch-flexy.ct-idle #below,
-    ytd-watch-flexy.ct-idle #secondary,
-    ytd-watch-flexy.ct-idle #masthead-container {
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.4s ease;
+    body.clearline-idle #below,
+    body.clearline-idle #secondary,
+    body.clearline-idle #related,
+    body.clearline-idle #comments,
+    body.clearline-idle ytd-watch-metadata,
+    body.clearline-idle #masthead-container,
+    body.clearline-idle #chat,
+    body.clearline-idle #ticket-shelf {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      transition: opacity 0.45s ease !important;
     }
-    ytd-watch-flexy #below,
-    ytd-watch-flexy #secondary,
-    ytd-watch-flexy #masthead-container {
-      transition: opacity 0.4s ease;
+    #below,
+    #secondary,
+    #related,
+    #comments,
+    ytd-watch-metadata,
+    #masthead-container,
+    #chat {
+      transition: opacity 0.35s ease;
     }
   `;
   const IDLE_TIMEOUT = 2500;
@@ -968,17 +1034,20 @@
   }
 
   function setIdle(on) {
-    const flexy = document.querySelector("ytd-watch-flexy");
-    if (flexy) flexy.classList.toggle("ct-idle", on);
+    document.body.classList.toggle("clearline-idle", on);
   }
 
   function resetIdleTimer() {
-    // Any user activity → immediately un-idle and restart the countdown.
     setIdle(false);
     clearTimeout(fadeTimer);
     const v = document.querySelector("video");
     if (fadeActive && v && !v.paused && !v.ended) {
-      fadeTimer = setTimeout(() => setIdle(true), IDLE_TIMEOUT);
+      fadeTimer = setTimeout(() => {
+        const curV = document.querySelector("video");
+        if (fadeActive && curV && !curV.paused) {
+          setIdle(true);
+        }
+      }, IDLE_TIMEOUT);
     }
   }
 
@@ -990,9 +1059,11 @@
     if (fadeActive) return;
     fadeActive = true;
     ensureFadeStyle();
-    document.addEventListener("mousemove", onFadeActivity, true);
-    document.addEventListener("mousedown", onFadeActivity, true);
-    document.addEventListener("keydown", onFadeActivity, true);
+    window.addEventListener("mousemove", onFadeActivity, { capture: true, passive: true });
+    window.addEventListener("mousedown", onFadeActivity, { capture: true, passive: true });
+    window.addEventListener("keydown", onFadeActivity, { capture: true, passive: true });
+    window.addEventListener("wheel", onFadeActivity, { capture: true, passive: true });
+    window.addEventListener("touchstart", onFadeActivity, { capture: true, passive: true });
     resetIdleTimer();
   }
 
@@ -1002,19 +1073,23 @@
     clearTimeout(fadeTimer);
     fadeTimer = null;
     setIdle(false);
-    document.removeEventListener("mousemove", onFadeActivity, true);
-    document.removeEventListener("mousedown", onFadeActivity, true);
-    document.removeEventListener("keydown", onFadeActivity, true);
+    window.removeEventListener("mousemove", onFadeActivity, { capture: true });
+    window.removeEventListener("mousedown", onFadeActivity, { capture: true });
+    window.removeEventListener("keydown", onFadeActivity, { capture: true });
+    window.removeEventListener("wheel", onFadeActivity, { capture: true });
+    window.removeEventListener("touchstart", onFadeActivity, { capture: true });
   }
 
   function checkAutoFadeConditions() {
+    const v = document.querySelector("video");
+    const playing = v && !v.paused && !v.ended;
     const shouldRun =
       settings.autoFadeUI &&
       isTheaterMode() &&
-      !document.hidden;
-    const v = document.querySelector("video");
-    const playing = v && !v.paused && !v.ended;
-    if (shouldRun && playing) {
+      !document.hidden &&
+      playing;
+
+    if (shouldRun) {
       startAutoFade();
     } else {
       stopAutoFade();

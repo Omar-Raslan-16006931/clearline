@@ -20,7 +20,7 @@ pip install pyinstaller --quiet --disable-pip-version-check
 
 :: Build
 echo [2/2] Building ClearTube Updater.exe...
-pyinstaller --onefile --windowed --name "ClearTube Updater" updater.py --distpath . --clean --noconfirm >nul 2>&1
+python -m PyInstaller --onefile --windowed --name "ClearTube Updater" updater.py --distpath . --clean --noconfirm >nul 2>&1
 
 :: Clean up build artifacts
 if exist build rmdir /s /q build
