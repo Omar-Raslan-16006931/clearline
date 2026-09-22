@@ -1,6 +1,6 @@
 {
-  "version": "1.15.0",
+  "version": "1.15.1",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Unified seamless cinema background, video border, customizable speed presets, and website .exe installer."
+  "notes": "Fixed dynamic on-player speed slider presets, seamless cinema focus mode, and installer."
 }
