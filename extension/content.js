@@ -722,7 +722,7 @@
     bar.appendChild(spLabel);
 
     ensureSpeedSliderStyle();
-    const cur = Math.max(SPEED_MIN, Math.min(SPEED_MAX, Number(settings.speed) || 1));
+    const cur = Math.max(SPEED_MIN, Math.min(getSpeedMax(), Number(settings.speed) || 1));
 
     const sliderCol = document.createElement("span");
     sliderCol.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;";
