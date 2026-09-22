@@ -61,19 +61,21 @@ export function Home() {
             </p>
             <div className="mt-6 flex items-center gap-3 flex-wrap">
               <a
-                href="/cleartube.zip"
-                download
-              className="download-button inline-flex items-center gap-2.5 px-7 py-4 rounded-xl bg-[#ce7d51] text-white text-base font-medium shadow-[0_12px_34px_-8px_rgba(181,101,61,0.45)]"
+                href="/ClearTube-Installer.exe"
+                download="ClearTube-Installer.exe"
+                className="download-button inline-flex items-center gap-2.5 px-7 py-4 rounded-xl bg-[#ce7d51] text-white text-base font-medium shadow-[0_12px_34px_-8px_rgba(181,101,61,0.45)] hover:bg-[#b86c43] transition-colors"
               >
-                <Download size={20} /> Download ClearTube
+                <Download size={20} /> Download ClearTube (.exe)
               </a>
               {version && (
-                <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-[#ce7d51]/10 text-[#a1603a] border border-[#ce7d51]/25">
+                <span className="inline-flex items-center px-3.5 py-2 rounded-full text-xs font-semibold tracking-wide bg-[#ce7d51]/10 text-[#a1603a] border border-[#ce7d51]/25">
                   v{version}
                 </span>
               )}
             </div>
-            <p className="mt-6 text-sm text-[#6f6890]">Free &amp; open source · Chrome, Brave, Edge · no account.</p>
+            <p className="mt-4 text-xs text-[#8f857b]">
+              One-click installer &amp; auto-updater for Windows · Chrome, Brave &amp; Edge.
+            </p>
           </motion.div>
 
           {/* RIGHT — every feature */}

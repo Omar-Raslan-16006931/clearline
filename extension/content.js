@@ -19,6 +19,7 @@
     speed: 1,
     ambientGlow: true,
     autoFadeUI: true,
+    speedPresets: "1, 1.5, 2, 2.5, 3, 5, 10",
   };
   let settings = { ...DEFAULTS };
 
@@ -524,17 +525,35 @@
   }
 
   /* ---------- apply everything ---------- */
-  /* ---------- PLAYBACK SPEED (0.25x – 100x) ---------- */
+  /* ---------- PLAYBACK SPEED (Customizable presets) ---------- */
   const SPEED_MIN = 0.25;
-  const SPEED_MAX = 100;
-  // Points the slider "sticks" to when the thumb passes near them.
-  const SPEED_SNAP_POINTS = [0.25, 0.5, 1, 1.5, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+  function parseSpeedPresets(str) {
+    const raw = (str || "1, 1.5, 2, 2.5, 3, 5, 10").split(/[\s,]+/);
+    const parsed = raw.map(Number).filter((n) => !isNaN(n) && n >= 0.1 && n <= 100);
+    const set = Array.from(new Set(parsed)).sort((a, b) => a - b);
+    return set.length ? set : [1, 1.5, 2, 2.5, 3, 5, 10];
+  }
+
+  function getSpeedSnapPoints() {
+    const presets = parseSpeedPresets(settings.speedPresets);
+    const base = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.5, 4, 5, 10, 16, 20, 50, 100];
+    return Array.from(new Set([...base, ...presets])).sort((a, b) => a - b);
+  }
+
+  function getSpeedMax() {
+    const presets = parseSpeedPresets(settings.speedPresets);
+    const maxPreset = Math.max(...presets, 10);
+    return Math.min(100, Math.max(maxPreset, Number(settings.speed) || 1));
+  }
+
   let turboTimer = null;
 
   function applySpeed() {
     const v = document.querySelector("video");
     if (!v) return;
-    const s = Math.max(SPEED_MIN, Math.min(SPEED_MAX, Number(settings.speed) || 1));
+    const max = getSpeedMax();
+    const s = Math.max(SPEED_MIN, Math.min(max, Number(settings.speed) || 1));
     // Browsers clamp playbackRate at 16x, so above that we nudge currentTime
     // forward on a timer ("turbo") to reach the requested speed.
     try {
@@ -586,11 +605,13 @@
   /* ---------- speed slider: logarithmic position with magnetic snap points ---------- */
   const SLIDER_STEPS = 1000;
   function speedToPos(s) {
-    const c = Math.max(SPEED_MIN, Math.min(SPEED_MAX, s));
-    return Math.round((SLIDER_STEPS * Math.log(c / SPEED_MIN)) / Math.log(SPEED_MAX / SPEED_MIN));
+    const max = getSpeedMax();
+    const c = Math.max(SPEED_MIN, Math.min(max, s));
+    return Math.round((SLIDER_STEPS * Math.log(c / SPEED_MIN)) / Math.log(max / SPEED_MIN));
   }
   function posToSpeed(pos) {
-    return SPEED_MIN * Math.pow(SPEED_MAX / SPEED_MIN, pos / SLIDER_STEPS);
+    const max = getSpeedMax();
+    return SPEED_MIN * Math.pow(max / SPEED_MIN, pos / SLIDER_STEPS);
   }
   function niceRound(s) {
     if (s < 1) return Math.round(s * 20) / 20; // nearest 0.05
@@ -598,11 +619,10 @@
     return Math.round(s); // nearest 1
   }
   function magnetize(s) {
-    // Logarithmic distance so the "pull" toward a tick feels equal at both
-    // ends of a 0.25x–100x range, not just near the small numbers.
     let best = null,
       bestDist = Infinity;
-    for (const p of SPEED_SNAP_POINTS) {
+    const snapPoints = getSpeedSnapPoints();
+    for (const p of snapPoints) {
       const dist = Math.abs(Math.log(s / p));
       if (dist < bestDist) {
         bestDist = dist;
@@ -632,10 +652,6 @@
     document.head.appendChild(style);
   }
   const SPEED_TRACK_WIDTH = 300;
-  // Labels shown under the track — kept sparse so they never collide on a
-  // single row. Dragging still snaps to every point in SPEED_SNAP_POINTS
-  // (2×, 3×, 30×, 40×, etc.) even though not all of them get their own label.
-  const SPEED_TICK_LABELS = [1, 2, 5, 10, 20, 50, 100];
 
   /* ---------- ON-PAGE CONTROL BAR (below the video) ---------- */
   function barBtn(text, active, onClick, title) {
@@ -726,7 +742,7 @@
     slider.max = String(SLIDER_STEPS);
     slider.step = "1";
     slider.value = String(speedToPos(cur));
-    slider.title = "Drag to set playback speed (0.25×–100×)";
+    slider.title = "Drag to set playback speed";
 
     slider.addEventListener("input", () => {
       const raw = posToSpeed(Number(slider.value));
@@ -749,11 +765,13 @@
 
     const ticks = document.createElement("span");
     ticks.id = "ct-speed-ticks";
-    SPEED_TICK_LABELS.forEach((p) => {
+    const customPresets = parseSpeedPresets(settings.speedPresets);
+    customPresets.forEach((p) => {
       const x = (speedToPos(p) / SLIDER_STEPS) * SPEED_TRACK_WIDTH;
       const t = document.createElement("b");
-      t.textContent = p + "×";
-      t.style.left = x + "px";
+      t.textContent = (p < 1 ? p : (Math.abs(p - Math.round(p)) < 0.01 ? Math.round(p) : p)) + "×";
+      t.style.left = Math.min(SPEED_TRACK_WIDTH - 6, Math.max(6, x)) + "px";
+      t.title = "Set speed to " + p + "×";
       t.addEventListener("click", () => {
         slider.value = String(speedToPos(p));
         valueLabel.textContent = fmtSpeed(p);
@@ -827,16 +845,64 @@
   /* ---------- AMBIENT GLOW (dynamic video color behind/around player) ---------- */
   const AMBIENT_STYLE_ID = "ct-ambient-style";
   const AMBIENT_CSS = `
+    /* Eliminate section lines and borders in theater mode for 1 seamless backdrop */
+    ytd-watch-flexy[theater] #masthead-container,
+    ytd-watch-grid[theater] #masthead-container,
+    ytd-watch-flexy[theater] #masthead,
+    ytd-watch-grid[theater] #masthead,
+    ytd-watch-flexy[theater] #player-theater-container,
+    ytd-watch-grid[theater] #player-theater-container,
+    ytd-watch-flexy[theater] #full-bleed-container,
+    ytd-watch-flexy[theater] #player-container-outer,
+    ytd-watch-flexy[theater] #player-container,
+    ytd-watch-flexy[theater] #below,
+    ytd-watch-flexy[theater] #primary,
+    ytd-watch-flexy[theater] #secondary,
+    ytd-watch-flexy[theater] #columns {
+      border: none !important;
+      border-top: none !important;
+      border-bottom: none !important;
+      border-left: none !important;
+      border-right: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+
+    ytd-watch-flexy[theater] #player-theater-container,
+    ytd-watch-flexy[theater] #full-bleed-container,
+    ytd-watch-grid[theater] #player-theater-container {
+      background: #09090b !important;
+      overflow: visible !important;
+    }
+
+    /* Video player crisp modern border & subtle rounding in theater mode */
+    ytd-watch-flexy[theater] #movie_player,
+    ytd-watch-grid[theater] #movie_player {
+      border-radius: 14px !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.22) !important;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+      overflow: hidden !important;
+      position: relative !important;
+      z-index: 2 !important;
+      transition: border-color 0.35s ease, box-shadow 0.35s ease !important;
+    }
+    ytd-watch-flexy[theater] #movie_player video.html5-main-video,
+    ytd-watch-grid[theater] #movie_player video.html5-main-video {
+      border-radius: 12px !important;
+    }
+
+    /* Ambient glow halo behind the player */
     #ct-ambient-glow {
       position: absolute;
-      inset: -20px;
-      z-index: 0;
+      inset: -50px -70px;
+      z-index: 1;
       pointer-events: none;
-      border-radius: 16px;
-      filter: blur(60px);
+      border-radius: 36px;
+      filter: blur(75px);
       opacity: 0.85;
-      transition: background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease;
+      transition: background 0.4s ease, box-shadow 0.4s ease, opacity 0.4s ease;
     }
+
     #full-bleed-container,
     #player-theater-container,
     #player-container-outer,
@@ -844,10 +910,6 @@
     ytd-watch-flexy[theater] #player-container,
     ytd-watch-grid[theater] #player-container {
       overflow: visible !important;
-    }
-    #movie_player.html5-video-player {
-      position: relative;
-      z-index: 1;
     }
   `;
   let ambientRaf = null;
@@ -922,7 +984,10 @@
     const glow = document.getElementById("ct-ambient-glow");
     if (glow) glow.remove();
     const player = document.getElementById("movie_player");
-    if (player) player.style.boxShadow = "";
+    if (player) {
+      player.style.boxShadow = "";
+      player.style.borderColor = "";
+    }
   }
 
   function ambientFrame(ts) {
@@ -960,16 +1025,16 @@
           }
 
           const shadow =
-            "0 0 90px 35px rgba(" + r + "," + g + "," + b + ",0.55), " +
-            "0 0 180px 80px rgba(" + r + "," + g + "," + b + ",0.30)";
+            "0 0 100px 40px rgba(" + r + "," + g + "," + b + ",0.50), " +
+            "0 0 200px 90px rgba(" + r + "," + g + "," + b + ",0.25)";
 
           if (glow) {
-            glow.style.background = "radial-gradient(ellipse at center, rgba(" + r + "," + g + "," + b + ",0.75) 0%, rgba(" + r + "," + g + "," + b + ",0.35) 70%, transparent 100%)";
+            glow.style.background = "radial-gradient(ellipse at center, rgba(" + r + "," + g + "," + b + ",0.70) 0%, rgba(" + r + "," + g + "," + b + ",0.25) 50%, transparent 85%)";
             glow.style.boxShadow = shadow;
           }
           if (player) {
-            player.style.boxShadow = "0 0 60px 20px rgba(" + r + "," + g + "," + b + ",0.45)";
-            player.style.transition = "box-shadow 0.35s ease";
+            player.style.boxShadow = "0 16px 48px rgba(0,0,0,0.9), 0 0 50px 15px rgba(" + r + "," + g + "," + b + ",0.40)";
+            player.style.borderColor = "rgba(" + Math.min(255, r + 40) + "," + Math.min(255, g + 40) + "," + Math.min(255, b + 40) + ",0.35)";
           }
         } catch (_) {
           // Keep loop alive across transient canvas read issues
@@ -999,7 +1064,16 @@
   /* ---------- AUTO-FADE UI (hide page chrome on idle in theater mode) ---------- */
   const FADE_STYLE_ID = "ct-fade-style";
   const FADE_CSS = `
+    body.clearline-idle {
+      overflow: hidden !important;
+    }
+    body.clearline-idle::-webkit-scrollbar,
+    body.clearline-idle *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+    }
     body.clearline-idle #below,
+    body.clearline-idle #ct-bar,
     body.clearline-idle #secondary,
     body.clearline-idle #related,
     body.clearline-idle #comments,
@@ -1009,16 +1083,18 @@
     body.clearline-idle #ticket-shelf {
       opacity: 0 !important;
       pointer-events: none !important;
-      transition: opacity 0.45s ease !important;
+      visibility: hidden !important;
+      transition: opacity 0.45s ease, visibility 0.45s ease !important;
     }
     #below,
+    #ct-bar,
     #secondary,
     #related,
     #comments,
     ytd-watch-metadata,
     #masthead-container,
     #chat {
-      transition: opacity 0.35s ease;
+      transition: opacity 0.35s ease, visibility 0.35s ease;
     }
   `;
   const IDLE_TIMEOUT = 2500;

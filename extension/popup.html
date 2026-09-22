@@ -157,6 +157,24 @@
     }
     #updateBanner button.dl.secondary:hover { background: #fff; }
 
+    /* speed presets */
+    .speed-presets-box { padding: 12px 2px 6px; border-top: 1px solid var(--line); }
+    .speed-presets-box .label { font-weight: 500; font-size: 13px; }
+    .speed-presets-box .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .speed-input {
+      width: 100%; margin-top: 8px; padding: 7px 10px; border-radius: 8px;
+      border: 1px solid var(--line); background: #fdf9f2; color: var(--ink);
+      font-family: inherit; font-size: 12px; outline: none; transition: border-color .2s;
+    }
+    .speed-input:focus { border-color: var(--accent); }
+    .chips-row { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+    .chip-btn {
+      font-size: 10.5px; padding: 3px 7px; border-radius: 6px;
+      border: 1px solid var(--line); background: var(--hover); color: var(--ink);
+      cursor: pointer; transition: all .15s;
+    }
+    .chip-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+
   </style>
 </head>
 <body>
@@ -230,6 +248,17 @@
         <span class="volval" id="volVal">100%</span>
       </div>
       <input type="range" id="volume" min="100" max="500" step="10" value="100" />
+    </div>
+
+    <div class="speed-presets-box">
+      <div class="label" data-i18n="speedPresets">Speed slider presets</div>
+      <div class="sub" data-i18n="speedPresetsSub">Custom values for on-player slider (comma-separated)</div>
+      <input type="text" id="speedPresets" class="speed-input" placeholder="1, 1.5, 2, 2.5, 3.5, 5" />
+      <div class="chips-row">
+        <button type="button" class="chip-btn" data-val="1, 1.25, 1.5, 1.75, 2">Casual</button>
+        <button type="button" class="chip-btn" data-val="1, 1.5, 2, 2.5, 3.5">Study</button>
+        <button type="button" class="chip-btn" data-val="1, 2, 5, 10, 20, 50, 100">Max</button>
+      </div>
     </div>
 
     <div class="section">

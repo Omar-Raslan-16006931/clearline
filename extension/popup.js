@@ -27,6 +27,7 @@ const I18N = {
     dlQuality: "Choose quality (up to 4K)",
     ambientGlow: "Ambient glow", ambientGlowSub: "Color aura · theater",
     autoFadeUI: "Fade on idle", autoFadeUISub: "Hide page · theater",
+    speedPresets: "Speed slider presets", speedPresetsSub: "Custom values for on-player slider",
   },
   ar: {
     title: "Clear<b>Tube</b>",
@@ -55,6 +56,7 @@ const I18N = {
     dlQuality: "اختر الجودة (حتى 4K)",
     ambientGlow: "إضاءة محيطية", ambientGlowSub: "هالة ملونة · المسرح",
     autoFadeUI: "إخفاء عند السكون", autoFadeUISub: "إخفاء الصفحة · المسرح",
+    speedPresets: "إعدادات شريط السرعة", speedPresetsSub: "قيم مخصصة للشريط في المشغل",
   },
 };
 let LANG = "en";
@@ -89,7 +91,7 @@ langArBtn.addEventListener("click", () => { chrome.storage.sync.set({ lang: "ar"
 const DEFAULTS = {
   loop: true, hideShorts: true, redirectShorts: false, skipSponsors: true,
   showDislikes: true, volumeBoost: 100, blockAds: true, lang: "en",
-  ambientGlow: true, autoFadeUI: true,
+  ambientGlow: true, autoFadeUI: true, speedPresets: "1, 1.5, 2, 2.5, 3, 5, 10",
 };
 const loopEl = document.getElementById("loop");
 const blockAdsEl = document.getElementById("blockAds");
@@ -102,6 +104,7 @@ const volValEl = document.getElementById("volVal");
 const redirectRow = document.getElementById("redirectRow");
 const ambientGlowEl = document.getElementById("ambientGlow");
 const autoFadeUIEl = document.getElementById("autoFadeUI");
+const speedPresetsEl = document.getElementById("speedPresets");
 
 function syncNested() {
   redirectRow.classList.toggle("off", !hideEl.checked);
@@ -121,6 +124,7 @@ chrome.storage.sync.get(DEFAULTS, (s) => {
   dislikesEl.checked = s.showDislikes;
   ambientGlowEl.checked = s.ambientGlow;
   autoFadeUIEl.checked = s.autoFadeUI;
+  if (speedPresetsEl) speedPresetsEl.value = s.speedPresets || "1, 1.5, 2, 2.5, 3, 5, 10";
   volumeEl.value = s.volumeBoost;
   volValEl.textContent = s.volumeBoost + "%";
   paintVol();
@@ -138,6 +142,7 @@ function save() {
     showDislikes: dislikesEl.checked,
     ambientGlow: ambientGlowEl.checked,
     autoFadeUI: autoFadeUIEl.checked,
+    speedPresets: speedPresetsEl ? (speedPresetsEl.value.trim() || "1, 1.5, 2, 2.5, 3, 5, 10") : "1, 1.5, 2, 2.5, 3, 5, 10",
     volumeBoost: Number(volumeEl.value),
   });
 }
@@ -149,6 +154,18 @@ hideEl.addEventListener("change", () => { syncNested(); save(); });
 redirectEl.addEventListener("change", save);
 ambientGlowEl.addEventListener("change", save);
 autoFadeUIEl.addEventListener("change", save);
+if (speedPresetsEl) {
+  speedPresetsEl.addEventListener("change", save);
+  speedPresetsEl.addEventListener("blur", save);
+}
+document.querySelectorAll(".chip-btn").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    if (speedPresetsEl && chip.dataset.val) {
+      speedPresetsEl.value = chip.dataset.val;
+      save();
+    }
+  });
+});
 volumeEl.addEventListener("input", () => {
   volValEl.textContent = volumeEl.value + "%";
   paintVol();

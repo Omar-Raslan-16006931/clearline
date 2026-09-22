@@ -27,11 +27,11 @@ export function Navbar() {
         </nav>
 
         <a
-          href="/cleartube.zip"
-          download
+          href="/ClearTube-Installer.exe"
+          download="ClearTube-Installer.exe"
           className="inline-flex items-center gap-2 text-[15px] font-medium px-5 py-2.5 rounded-xl bg-[#6d5cf5] text-white hover:bg-[#5f4ef0] transition-colors shadow-[0_6px_18px_-6px_rgba(109,92,245,0.7)]"
         >
-          <Download size={16} /> Download
+          <Download size={16} /> Download .exe
         </a>
       </div>
     </motion.header>

@@ -1,5 +1,6 @@
 {
-  "version": "1.14.0",
+  "version": "1.15.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
-  "notes": "Dynamic ambient background lighting, theater mode auto-fade UI, and new standalone installer/updater."
+  "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
+  "notes": "Unified seamless cinema background, video border, customizable speed presets, and website .exe installer."
 }
