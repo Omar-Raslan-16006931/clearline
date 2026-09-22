@@ -1,6 +1,6 @@
 {
-  "version": "1.15.1",
+  "version": "1.15.3",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Fixed dynamic on-player speed slider presets, seamless cinema focus mode, and installer."
+  "notes": "Fixed speed preset buttons spacing with clean pill layout and track snap pips."
 }

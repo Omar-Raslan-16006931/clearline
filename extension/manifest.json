@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClearTube",
-  "version": "1.15.1",
+  "version": "1.15.3",
   "description": "Blocks ads, skips sponsors, controls speed up to 100x, boosts volume to 500%, shows dislikes, hides Shorts, loops, and downloads — with on-player controls.",
   "permissions": ["storage", "downloads", "clipboardWrite", "declarativeNetRequest", "alarms"],
   "declarative_net_request": {

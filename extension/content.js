@@ -645,10 +645,48 @@
       "#ct-speed-slider::-moz-range-thumb,#ct-vol-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
       "border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
       "#ct-speed-slider::-moz-range-track,#ct-vol-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
-      "#ct-speed-ticks{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:12px;}" +
-      "#ct-speed-ticks b{position:absolute;top:1px;transform:translateX(-50%);font:600 9px Roboto,system-ui,sans-serif;" +
-      "color:var(--yt-spec-text-secondary,#aaa);cursor:pointer;user-select:none;white-space:nowrap;}" +
-      "#ct-speed-ticks b:hover{color:#ff5277;}";
+      "#ct-speed-pips{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:4px;margin:2px 0 4px 0;pointer-events:none;}" +
+      ".ct-speed-pip{position:absolute;top:0;width:2px;height:4px;background:rgba(255,255,255,0.3);border-radius:1px;transform:translateX(-50%);}" +
+      "#ct-speed-btn-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:440px;margin-top:2px;}" +
+      ".ct-speed-pill{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);" +
+      "color:#ccc;border-radius:6px;padding:3px 8px;font:600 11px Roboto,system-ui,sans-serif;cursor:pointer;line-height:1.2;" +
+      "transition:all 0.15s ease;user-select:none;white-space:nowrap;}" +
+      ".ct-speed-pill:hover{background:rgba(255,82,119,0.22);border-color:#ff5277;color:#fff;transform:translateY(-1px);}" +
+      ".ct-speed-pill.active{background:#ff5277 !important;border-color:#ff5277 !important;color:#fff !important;font-weight:700 !important;" +
+      "box-shadow:0 1px 8px rgba(255,82,119,0.45);}" +
+      "#ct-speed-edit-btn{display:inline-flex;align-items:center;gap:3px;background:rgba(255,82,119,0.12);color:#ff6f8b;" +
+      "border:1px solid rgba(255,82,119,0.35);border-radius:6px;padding:2px 7px;font:600 11px Roboto,system-ui,sans-serif;" +
+      "cursor:pointer;line-height:1.2;transition:all 0.15s ease;user-select:none;margin-left:2px;}" +
+      "#ct-speed-edit-btn:hover{background:rgba(255,82,119,0.25);border-color:#ff5277;color:#fff;box-shadow:0 0 8px rgba(255,82,119,0.35);}" +
+      "#ct-speed-edit-btn.active{background:#ff5277;color:#fff;border-color:#ff5277;}" +
+      "#ct-speed-popover{position:absolute;top:calc(100% + 8px);left:0;z-index:9999999;width:390px;max-width:92vw;" +
+      "background:#111015;border:1px solid rgba(255,82,119,0.4);border-radius:12px;padding:14px 16px;" +
+      "box-shadow:0 16px 40px rgba(0,0,0,0.85),0 0 25px rgba(255,82,119,0.15);color:#f1f1f1;font-family:Roboto,system-ui,sans-serif;box-sizing:border-box;}" +
+      "#ct-speed-popover *{box-sizing:border-box;}" +
+      ".ct-pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);}" +
+      ".ct-pop-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px;}" +
+      ".ct-pop-tag{font-size:9.5px;font-weight:700;background:rgba(255,82,119,0.2);color:#ff6f8b;padding:1px 6px;border-radius:999px;letter-spacing:0.5px;text-transform:uppercase;}" +
+      ".ct-pop-close{background:transparent;border:none;color:#888;font-size:16px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:4px;}" +
+      ".ct-pop-close:hover{color:#fff;background:rgba(255,255,255,0.1);}" +
+      ".ct-pop-sec-title{font-size:11px;font-weight:600;color:#aaa;margin:9px 0 5px 0;text-transform:uppercase;letter-spacing:0.5px;}" +
+      ".ct-pop-packs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}" +
+      ".ct-pop-pack-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:#ccc;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.15s ease;}" +
+      ".ct-pop-pack-btn:hover{background:rgba(255,82,119,0.15);border-color:#ff5277;color:#ff8fa3;}" +
+      ".ct-pop-chips-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding:3px;margin-bottom:10px;}" +
+      ".ct-pop-chips-grid::-webkit-scrollbar{width:4px;}" +
+      ".ct-pop-chips-grid::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px;}" +
+      ".ct-pop-chip{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:#aaa;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;min-width:44px;text-align:center;cursor:pointer;user-select:none;transition:all 0.15s ease;}" +
+      ".ct-pop-chip:hover{border-color:rgba(255,82,119,0.5);color:#fff;}" +
+      ".ct-pop-chip.active{background:#ff5277 !important;border-color:#ff5277 !important;color:#fff !important;font-weight:700;box-shadow:0 2px 8px rgba(255,82,119,0.4);}" +
+      ".ct-pop-input-row{display:flex;gap:6px;margin-bottom:10px;}" +
+      ".ct-pop-input{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:7px 10px;color:#fff;font:500 12px Roboto,monospace,sans-serif;outline:none;}" +
+      ".ct-pop-input:focus{border-color:#ff5277;box-shadow:0 0 0 2px rgba(255,82,119,0.25);}" +
+      ".ct-pop-actions{display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);gap:8px;}" +
+      ".ct-pop-save-btn{background:#ff5277;color:#fff;border:none;border-radius:6px;padding:7px 16px;font:700 12px Roboto,system-ui,sans-serif;cursor:pointer;transition:background 0.15s ease;}" +
+      ".ct-pop-save-btn:hover{background:#ff3360;}" +
+      ".ct-pop-reset-btn{background:transparent;border:1px solid rgba(255,255,255,0.15);color:#aaa;border-radius:6px;padding:6px 12px;font:500 11px Roboto,system-ui,sans-serif;cursor:pointer;}" +
+      ".ct-pop-reset-btn:hover{color:#fff;border-color:rgba(255,255,255,0.3);}" +
+      ".ct-pop-saved-msg{color:#4ade80;font-size:11px;font-weight:600;display:none;}";
     document.head.appendChild(style);
   }
   const SPEED_TRACK_WIDTH = 300;
@@ -700,7 +738,7 @@
       bar.style.cssText =
         "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;padding:10px 12px;" +
         "border:1px solid var(--yt-spec-10-percent-layer, rgba(128,128,128,0.2));border-radius:12px;" +
-        "background:var(--yt-spec-badge-chip-background, rgba(128,128,128,0.08));";
+        "background:var(--yt-spec-badge-chip-background, rgba(128,128,128,0.08));position:relative;z-index:999;";
       mount.prepend(bar);
     }
     updateBar();
@@ -725,7 +763,7 @@
     const cur = Math.max(SPEED_MIN, Math.min(getSpeedMax(), Number(settings.speed) || 1));
 
     const sliderCol = document.createElement("span");
-    sliderCol.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;";
+    sliderCol.style.cssText = "display:inline-flex;flex-direction:column;gap:1px;position:relative;";
 
     const sliderRow = document.createElement("span");
     sliderRow.style.cssText = "display:inline-flex;align-items:center;gap:8px;";
@@ -733,7 +771,7 @@
     const valueLabel = document.createElement("span");
     valueLabel.textContent = fmtSpeed(cur);
     valueLabel.style.cssText =
-      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:46px;";
+      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:44px;";
 
     const slider = document.createElement("input");
     slider.type = "range";
@@ -743,6 +781,22 @@
     slider.step = "1";
     slider.value = String(speedToPos(cur));
     slider.title = "Drag to set playback speed";
+
+    const customPresets = parseSpeedPresets(settings.speedPresets);
+
+    const btnRow = document.createElement("div");
+    btnRow.id = "ct-speed-btn-row";
+
+    function highlightActivePill(val) {
+      btnRow.querySelectorAll(".ct-speed-pill").forEach((pill) => {
+        const s = Number(pill.dataset.speed);
+        if (Math.abs(s - val) < 0.01) {
+          pill.classList.add("active");
+        } else {
+          pill.classList.remove("active");
+        }
+      });
+    }
 
     slider.addEventListener("input", () => {
       const raw = posToSpeed(Number(slider.value));
@@ -755,34 +809,266 @@
       }
       valueLabel.textContent = fmtSpeed(snapped);
       setSpeed(snapped, false); // live preview, no storage write yet
+      highlightActivePill(snapped);
     });
     slider.addEventListener("change", () => {
-      setSpeed(magnetize(posToSpeed(Number(slider.value))), true);
+      const snapped = magnetize(posToSpeed(Number(slider.value)));
+      setSpeed(snapped, true);
+      highlightActivePill(snapped);
     });
+
+    // Inline Edit Button on the slider itself
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.id = "ct-speed-edit-btn";
+    editBtn.innerHTML = "⚙ Edit";
+    editBtn.title = "Configure speed presets & custom values";
 
     sliderRow.appendChild(slider);
     sliderRow.appendChild(valueLabel);
+    sliderRow.appendChild(editBtn);
 
-    const ticks = document.createElement("span");
-    ticks.id = "ct-speed-ticks";
-    const customPresets = parseSpeedPresets(settings.speedPresets);
+    // Track pips indicating exact magnetic snap points
+    const trackPips = document.createElement("div");
+    trackPips.id = "ct-speed-pips";
+
     customPresets.forEach((p) => {
       const x = (speedToPos(p) / SLIDER_STEPS) * SPEED_TRACK_WIDTH;
-      const t = document.createElement("b");
-      t.textContent = (p < 1 ? p : (Math.abs(p - Math.round(p)) < 0.01 ? Math.round(p) : p)) + "×";
-      t.style.left = Math.min(SPEED_TRACK_WIDTH - 6, Math.max(6, x)) + "px";
-      t.title = "Set speed to " + p + "×";
-      t.addEventListener("click", () => {
+      const pip = document.createElement("span");
+      pip.className = "ct-speed-pip";
+      pip.style.left = Math.min(SPEED_TRACK_WIDTH - 2, Math.max(1, x)) + "px";
+      trackPips.appendChild(pip);
+
+      // Clean clickable pill button with even spacing
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ct-speed-pill" + (Math.abs(cur - p) < 0.01 ? " active" : "");
+      btn.dataset.speed = String(p);
+      btn.textContent = (p < 1 ? p : (Math.abs(p - Math.round(p)) < 0.01 ? Math.round(p) : p)) + "×";
+      btn.title = "Set speed to " + p + "×";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
         slider.value = String(speedToPos(p));
         valueLabel.textContent = fmtSpeed(p);
         setSpeed(p, true);
+        highlightActivePill(p);
       });
-      ticks.appendChild(t);
+      btnRow.appendChild(btn);
     });
 
     sliderCol.appendChild(sliderRow);
-    sliderCol.appendChild(ticks);
+    sliderCol.appendChild(trackPips);
+    sliderCol.appendChild(btnRow);
     bar.appendChild(sliderCol);
+
+    // Interactive Popover for choosing each value and writing custom ones
+    let popover = null;
+    let onDocClick = null;
+
+    function closePopover() {
+      if (popover) {
+        popover.remove();
+        popover = null;
+        editBtn.classList.remove("active");
+        if (onDocClick) {
+          document.removeEventListener("pointerdown", onDocClick);
+          onDocClick = null;
+        }
+      }
+    }
+
+    function togglePopover() {
+      if (popover) {
+        closePopover();
+        return;
+      }
+
+      editBtn.classList.add("active");
+      popover = document.createElement("div");
+      popover.id = "ct-speed-popover";
+
+      // Prevent events inside popover from bubbling or triggering YouTube shortcuts
+      popover.addEventListener("click", (e) => e.stopPropagation());
+      popover.addEventListener("keydown", (e) => e.stopPropagation());
+      popover.addEventListener("keyup", (e) => e.stopPropagation());
+      popover.addEventListener("keypress", (e) => e.stopPropagation());
+
+      // Header
+      const head = document.createElement("div");
+      head.className = "ct-pop-head";
+      head.innerHTML =
+        '<div class="ct-pop-title">Speed Presets <span class="ct-pop-tag">Custom</span></div>' +
+        '<button type="button" class="ct-pop-close" title="Close">✕</button>';
+      head.querySelector(".ct-pop-close").addEventListener("click", closePopover);
+      popover.appendChild(head);
+
+      // Section 1: Quick Profiles
+      const packTitle = document.createElement("div");
+      packTitle.className = "ct-pop-sec-title";
+      packTitle.textContent = "Quick Profiles:";
+      popover.appendChild(packTitle);
+
+      const packsContainer = document.createElement("div");
+      packsContainer.className = "ct-pop-packs";
+
+      const PACKS = [
+        { name: "Default (1–10×)", val: "1, 1.5, 2, 2.5, 3, 5, 10" },
+        { name: "Casual (0.75–2×)", val: "0.75, 1, 1.25, 1.5, 1.75, 2" },
+        { name: "Fine (0.25 steps)", val: "0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5" },
+        { name: "Study (1–3×)", val: "1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3" },
+        { name: "Ultra (up to 100×)", val: "1, 2, 5, 10, 20, 50, 100" }
+      ];
+
+      // Section 2: Choose Each Value (Chips Grid)
+      const chipTitle = document.createElement("div");
+      chipTitle.className = "ct-pop-sec-title";
+      chipTitle.textContent = "Choose Values (click to toggle):";
+
+      const chipsGrid = document.createElement("div");
+      chipsGrid.className = "ct-pop-chips-grid";
+
+      const SPEED_CHOICES = [
+        0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 4, 5, 6, 8, 10, 12, 16, 20, 50, 100
+      ];
+
+      // Section 3: Custom Text Input
+      const inputTitle = document.createElement("div");
+      inputTitle.className = "ct-pop-sec-title";
+      inputTitle.textContent = "Custom speeds (comma-separated):";
+
+      const inputRow = document.createElement("div");
+      inputRow.className = "ct-pop-input-row";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "ct-pop-input";
+      input.placeholder = "e.g. 1, 1.5, 2, 2.5, 3.5, 5, 10";
+      input.value = settings.speedPresets || "1, 1.5, 2, 2.5, 3, 5, 10";
+      inputRow.appendChild(input);
+
+      function syncChipsFromInput() {
+        const currentVals = parseSpeedPresets(input.value);
+        chipsGrid.querySelectorAll(".ct-pop-chip").forEach((chip) => {
+          const val = Number(chip.dataset.val);
+          if (currentVals.includes(val)) {
+            chip.classList.add("active");
+          } else {
+            chip.classList.remove("active");
+          }
+        });
+      }
+
+      SPEED_CHOICES.forEach((spd) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "ct-pop-chip";
+        chip.dataset.val = String(spd);
+        chip.textContent = spd + "×";
+        chip.addEventListener("click", () => {
+          let list = parseSpeedPresets(input.value);
+          if (list.includes(spd)) {
+            if (list.length > 1) {
+              list = list.filter((x) => x !== spd);
+            }
+          } else {
+            list.push(spd);
+          }
+          list.sort((a, b) => a - b);
+          input.value = list.join(", ");
+          syncChipsFromInput();
+        });
+        chipsGrid.appendChild(chip);
+      });
+
+      PACKS.forEach((p) => {
+        const pBtn = document.createElement("button");
+        pBtn.type = "button";
+        pBtn.className = "ct-pop-pack-btn";
+        pBtn.textContent = p.name;
+        pBtn.addEventListener("click", () => {
+          input.value = p.val;
+          syncChipsFromInput();
+        });
+        packsContainer.appendChild(pBtn);
+      });
+
+      input.addEventListener("input", syncChipsFromInput);
+
+      // Section 4: Actions
+      const actions = document.createElement("div");
+      actions.className = "ct-pop-actions";
+
+      const resetBtn = document.createElement("button");
+      resetBtn.type = "button";
+      resetBtn.className = "ct-pop-reset-btn";
+      resetBtn.textContent = "Reset Default";
+      resetBtn.addEventListener("click", () => {
+        input.value = "1, 1.5, 2, 2.5, 3, 5, 10";
+        syncChipsFromInput();
+      });
+
+      const savedMsg = document.createElement("span");
+      savedMsg.className = "ct-pop-saved-msg";
+      savedMsg.textContent = "✓ Applied!";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "ct-pop-save-btn";
+      saveBtn.textContent = "Save & Apply";
+
+      function doSave() {
+        const parsed = parseSpeedPresets(input.value);
+        const formatted = parsed.join(", ");
+        settings.speedPresets = formatted;
+        try {
+          chrome.storage.sync.set({ speedPresets: formatted });
+        } catch (_) {}
+        savedMsg.style.display = "inline";
+        setTimeout(() => {
+          closePopover();
+          updateBar();
+          applySpeed();
+        }, 250);
+      }
+
+      saveBtn.addEventListener("click", doSave);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          doSave();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closePopover();
+        }
+      });
+
+      actions.appendChild(resetBtn);
+      actions.appendChild(savedMsg);
+      actions.appendChild(saveBtn);
+
+      popover.appendChild(packsContainer);
+      popover.appendChild(chipTitle);
+      popover.appendChild(chipsGrid);
+      popover.appendChild(inputTitle);
+      popover.appendChild(inputRow);
+      popover.appendChild(actions);
+
+      sliderCol.appendChild(popover);
+      syncChipsFromInput();
+      setTimeout(() => input.focus(), 50);
+
+      onDocClick = (e) => {
+        if (popover && !popover.contains(e.target) && e.target !== editBtn) {
+          closePopover();
+        }
+      };
+      document.addEventListener("pointerdown", onDocClick);
+    }
+
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePopover();
+    });
 
     const divider = document.createElement("span");
     divider.style.cssText =
@@ -1119,6 +1405,10 @@
     const v = document.querySelector("video");
     if (fadeActive && v && !v.paused && !v.ended) {
       fadeTimer = setTimeout(() => {
+        if (document.getElementById("ct-speed-popover")) {
+          resetIdleTimer();
+          return;
+        }
         const curV = document.querySelector("video");
         if (fadeActive && curV && !curV.paused) {
           setIdle(true);

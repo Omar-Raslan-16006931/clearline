@@ -155,6 +155,7 @@ redirectEl.addEventListener("change", save);
 ambientGlowEl.addEventListener("change", save);
 autoFadeUIEl.addEventListener("change", save);
 if (speedPresetsEl) {
+  speedPresetsEl.addEventListener("input", save);
   speedPresetsEl.addEventListener("change", save);
   speedPresetsEl.addEventListener("blur", save);
 }
