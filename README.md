@@ -3,7 +3,6 @@
 <img src=".github/assets/banner.svg" width="100%" alt="ClearTube"/>
 
 <a href="https://cleartube.vercel.app"><img src="https://img.shields.io/badge/Live%20Demo-Visit-22c55e?style=for-the-badge&logo=vercel&logoColor=white" alt="Live demo"/></a>
-<img src="https://img.shields.io/github/last-commit/Omar-Raslan-16006931/clearline?style=for-the-badge&color=6366f1" alt="Last commit"/>
 <img src="https://img.shields.io/github/languages/top/Omar-Raslan-16006931/clearline?style=for-the-badge&color=0ea5e9" alt="Top language"/>
 
 <br/><br/>
