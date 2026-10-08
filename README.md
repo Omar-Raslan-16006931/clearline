@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# ClearTube
 
-# Run and deploy your AI Studio app
+A Chrome extension for a cleaner YouTube, plus its landing site and a Windows installer/updater.
 
-This contains everything you need to run your app locally.
+**Website:** https://cleartube.vercel.app
 
-View your app in AI Studio: https://ai.studio/apps/995d52cc-fde7-4e95-8f1d-330d85aa4c1b
+## Extension features
 
-## Run Locally
+- Blocks ads and skips sponsor segments
+- Hides YouTube Shorts
+- On-player speed control (custom presets, up to 100x) and volume boost (up to 500%)
+- Shows dislike counts
+- Ambient glow behind the player and auto-fading UI in theater mode
+- Video downloader with format picker (ffmpeg.wasm for muxing)
+- Checks for updates and downloads new versions automatically
 
-**Prerequisites:**  Node.js
+## Repo layout
 
+```
+extension/   Chrome extension (Manifest V3): content script, background worker, popup
+src/         Landing site (React + Vite + Tailwind)
+public/      Downloadable extension zip, installer and version.json
+updater/     Windows updater (Python, built to .exe)
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Tech stack
+
+JavaScript (Chrome Extension MV3, declarativeNetRequest), React, TypeScript, Vite, Tailwind, Three.js, Python
+
+## Getting started
+
+```bash
+# Landing site
+npm install
+npm run dev
+
+# Extension
+# chrome://extensions → enable Developer mode → "Load unpacked" → select extension/
+```
