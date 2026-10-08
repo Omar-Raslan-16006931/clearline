@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=27&height=200&section=header&text=ClearTube&fontSize=56&fontColor=ffffff&fontAlignY=36&desc=Chrome%20extension%20for%20a%20cleaner%20YouTube%2C%20plus%20landing%20site%20and%20updater&descSize=16&descAlignY=58&animation=fadeIn" width="100%" alt="ClearTube"/>
+<img src=".github/assets/banner.svg" width="100%" alt="ClearTube"/>
 
 <a href="https://cleartube.vercel.app"><img src="https://img.shields.io/badge/Live%20Demo-Visit-22c55e?style=for-the-badge&logo=vercel&logoColor=white" alt="Live demo"/></a>
 <img src="https://img.shields.io/github/last-commit/Omar-Raslan-16006931/clearline?style=for-the-badge&color=6366f1" alt="Last commit"/>
@@ -57,6 +57,6 @@ npm run dev
 
 **Made with ❤️ by [Omar Raslan](https://github.com/Omar-Raslan-16006931)**
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=27&height=100&section=footer" width="100%"/>
+<img src=".github/assets/footer.svg" width="100%"/>
 
 </div>
