@@ -1,6 +1,6 @@
 {
-  "version": "1.16.1",
+  "version": "1.17.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Slimmer bar that fits its content, shorter speed slider, clearer icons with hover labels, and ambient glow + auto-fade are back."
+  "notes": "Wider bar sitting lower under the player, no dots under the speed slider, redesigned icons, and Ambient glow and Auto-fade are now their own buttons."
 }

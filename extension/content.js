@@ -679,7 +679,7 @@
    */
   const BAR_CSS = `
     :host{
-      all:initial;display:block;position:relative;z-index:5;margin:8px 0;contain:layout;
+      all:initial;display:block;position:relative;z-index:5;margin:22px 0 8px;contain:layout;
       font-family:Roboto,"YouTube Noto",Arial,sans-serif;color:var(--text);
       --ease:cubic-bezier(.4,0,.2,1);--amb:255 82 119;
       --surface:#1a1a1c;--border:rgba(255,255,255,.10);--text:#f5f5f7;--text2:#a8a8ad;
@@ -695,8 +695,8 @@
 
     /* Bar hugs its content instead of stretching across the page. */
     .bar{
-      position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;width:fit-content;max-width:100%;
-      min-height:40px;padding:5px 6px 5px 12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;width:fit-content;max-width:100%;
+      min-height:46px;padding:6px 10px 6px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;
       animation:enter .24s var(--ease);
       transition:opacity .4s var(--ease),box-shadow .9s ease,border-color .9s ease;
     }
@@ -719,9 +719,10 @@
     span[data-tip]{display:inline-flex}
     .brand{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
     .brand i{width:6px;height:6px;border-radius:50%;background:var(--accent);transition:background-color .9s ease}
-    .sep{width:1px;height:18px;background:var(--border)}
-    .grp{position:relative;display:flex;align-items:center;gap:6px;min-width:0}
-    .end{display:flex;align-items:center;gap:2px}
+    .sep{width:1px;height:20px;background:var(--border)}
+    .grp{position:relative;display:flex;align-items:center;gap:8px;min-width:0}
+    .end{display:flex;align-items:center;gap:4px}
+    .end .vr{width:1px;height:16px;margin:0 4px;background:var(--border)}
 
     .val{
       width:50px;height:28px;padding:0 6px;border:1px solid transparent;border-radius:8px;background:transparent;
@@ -734,8 +735,8 @@
     @keyframes bump{50%{transform:scale(1.12)}}
     .num{min-width:36px;font-size:13px;font-weight:500;color:var(--text2);font-variant-numeric:tabular-nums;text-align:right}
 
-    .slider{position:relative;flex:none;width:140px}
-    .vol .slider{width:88px}
+    .slider{position:relative;flex:none;width:168px}
+    .vol .slider{width:104px}
     input[type=range]{
       -webkit-appearance:none;appearance:none;display:block;width:100%;height:20px;background:transparent;cursor:pointer;--p:0%;border-radius:6px;
     }
@@ -750,18 +751,16 @@
     :host([data-glow]) input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 1px rgba(0,0,0,.18),0 0 10px 1px rgb(var(--amb) / .9)}
     input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18)}
     :is(input,button):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-    .pips{position:absolute;left:0;right:0;bottom:1px;height:3px;pointer-events:none}
-    .pip{position:absolute;top:0;width:1px;height:3px;background:var(--track);transform:translateX(-50%)}
 
     button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
     .ib{
-      position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--text2);flex:none;
+      position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;color:var(--text2);flex:none;
       transition:background-color .12s var(--ease),color .12s var(--ease),transform .1s var(--ease);
     }
     .ib:hover{background:var(--hover);color:var(--text)}
     .ib[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
     :is(.ib,.chip,.seg button,.primary):active{transform:scale(.92)}
-    .ib svg,.glyph svg,.seg svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .ib svg,.glyph svg,.seg svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
     .glyph{display:inline-flex;color:var(--text2);flex:none}
 
     /* Instant labelled tooltips so every icon says what it does. */
@@ -819,14 +818,17 @@
     modeSlider: '<svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="9" cy="12" r="2.6" fill="currentColor"/></svg>',
     modeButtons: '<svg viewBox="0 0 24 24"><rect x="2.5" y="8" width="5.5" height="8" rx="2"/><rect x="9.25" y="8" width="5.5" height="8" rx="2"/><rect x="16" y="8" width="5.5" height="8" rx="2"/></svg>',
     volume: '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>',
-    // repeat arrows = loop
-    loop: '<svg viewBox="0 0 24 24"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 014-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 01-4 4H4"/></svg>',
-    // $ followed by skip-to-end = skip sponsor segments
-    skipSponsors: '<svg viewBox="0 0 24 24"><path d="M7.5 3.5v17"/><path d="M11 7.2c0-1.5-1.5-2.4-3.5-2.4S4 5.7 4 7.2s1.5 2.3 3.5 2.8 3.5 1.2 3.5 2.9-1.5 2.8-3.5 2.8S4 14.8 4 13.2"/><path d="M14.5 8l4 4-4 4"/><path d="M20.5 8v8"/></svg>',
-    // "AD" badge with a strike = block ads
-    blockAds: '<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 15l2.2-6 2.2 6M7.3 13.2h2.8"/><path d="M13.5 9v6h1.3a3 3 0 000-6z"/><path d="M3 3l18 18"/></svg>',
-    // vertical "Shorts" card with a strike = hide Shorts
-    hideShorts: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><path d="M11 9.5v5l4-2.5z"/><path d="M3 3l18 18"/></svg>',
+    loop: '<svg viewBox="0 0 24 24"><path d="M17 3l3 3-3 3"/><path d="M4 11V10a4 4 0 014-4h12"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v1a4 4 0 01-4 4H4"/></svg>',
+    // skip-forward = jump over sponsor segments
+    skipSponsors: '<svg viewBox="0 0 24 24"><path d="M5 5.5v13l9-6.5z"/><path d="M19 5v14"/></svg>',
+    // shield with a cross = block ads
+    blockAds: '<svg viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.4-3 7.7-7.5 9.5-4.5-1.800-7.500-5.100-7.500-9.500V6z"/><path d="M9.200 9.700l5.600 5.600M14.800 9.700l-5.600 5.600"/></svg>',
+    // vertical Shorts card with a strike = hide Shorts
+    hideShorts: '<svg viewBox="0 0 24 24"><rect x="6.500" y="2.500" width="11" height="19" rx="3"/><path d="M10.500 9.500v5l4-2.500z"/><path d="M3.500 3.500l17 17"/></svg>',
+    // sun with rays = ambient glow
+    ambientGlow: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.500v2M12 19.500v2M2.500 12h2M19.500 12h2M5.300 5.300l1.400 1.400M17.300 17.300l1.400 1.400M5.300 18.700l1.400-1.400M17.300 6.700l1.400-1.400"/></svg>',
+    // half-filled circle = fades out
+    autoFadeUI: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.500"/><path d="M12 3.500a8.500 8.500 0 010 17z" fill="currentColor"/></svg>',
     download: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
   };
   const PROFILES = [
@@ -869,7 +871,6 @@
     const f = (Number(input.value) - min) / (max - min);
     input.style.setProperty("--p", "calc(7px + (100% - 14px) * " + f + ")");
   }
-  const pipLeft = (frac) => "calc(7px + (100% - 14px) * " + frac + ")";
 
   function bumpValue() {
     if (!barUI) return;
@@ -915,7 +916,6 @@
 
     /* speed slider (log scale 0.25×–100×, magnetic) */
     ui.speed = h("input", { type: "range", min: "0", max: String(SLIDER_STEPS), step: "2", "aria-label": "Playback speed slider" });
-    ui.pips = h("div", { class: "pips", "aria-hidden": "true" });
     ui.speed.addEventListener("input", () => {
       const m = magnetize(posToSpeed(Number(ui.speed.value)));
       if (m.snapped) ui.speed.value = String(speedToPos(m.value));
@@ -929,7 +929,7 @@
       setSpeed(m.value, false);
     });
     ui.speed.addEventListener("change", () => setSpeed(magnetize(posToSpeed(Number(ui.speed.value))).value, true));
-    ui.sliderWrap = h("div", { class: "slider" }, ui.speed, ui.pips);
+    ui.sliderWrap = h("div", { class: "slider" }, ui.speed);
     ui.inlineRow = h("div", { class: "chips inline", role: "group", "aria-label": "Speed presets" });
 
     /* slider ↔ buttons switch */
@@ -948,9 +948,9 @@
     const seg = h("div", { class: "seg", role: "group", "aria-label": "Speed control style" }, ui.modeBtns.slider, ui.modeBtns.buttons);
 
     /* settings popover: presets + effects */
-    const settingsBtn = h("button", { class: "ib", type: "button", "data-tip": "Presets & effects", "aria-label": "Presets and effects", "aria-haspopup": "dialog", html: ICONS.settings });
+    const settingsBtn = h("button", { class: "ib", type: "button", "data-tip": "Speed presets", "aria-label": "Speed presets", "aria-haspopup": "dialog", html: ICONS.settings });
     ui.chipRow = h("div", { class: "chips" });
-    const pop = h("div", { class: "pop", role: "dialog", "aria-label": "Presets and effects" });
+    const pop = h("div", { class: "pop", role: "dialog", "aria-label": "Speed presets" });
     const popInput = h("input", { type: "text", placeholder: "e.g. 1, 1.5, 2, 3, 5", "aria-label": "Custom presets, comma-separated" });
     const closePop = () => {
       pop.classList.remove("open");
@@ -969,26 +969,12 @@
       }
       closePop();
     };
-    const fxRow = h("div", { class: "chips" });
-    for (const [key, label] of EFFECTS) {
-      const b = h("button", { class: "chip", type: "button", "aria-pressed": "false" }, label);
-      b.addEventListener("click", () => {
-        settings[key] = !settings[key];
-        persist({ [key]: settings[key] });
-        b.setAttribute("aria-pressed", String(!!settings[key]));
-        applyEffects();
-      });
-      ui.fx[key] = b;
-      fxRow.append(b);
-    }
     pop.append(
       h("div", { class: "cap" }, "Quick speeds"),
       ui.chipRow,
       h("div", { class: "cap" }, "Preset profiles"),
       h("div", { class: "chips" }, ...PROFILES.map(([name, val]) => h("button", { class: "chip", type: "button", onclick: () => (popInput.value = val) }, name))),
       popInput,
-      h("div", { class: "cap" }, "Effects"),
-      fxRow,
       h(
         "div",
         { class: "row" },
@@ -1047,6 +1033,18 @@
       ui.togs[key] = [b, label];
       end.append(b);
     }
+    end.append(h("span", { class: "vr" }));
+    for (const [key, label] of EFFECTS) {
+      const b = h("button", { class: "ib", type: "button", "aria-pressed": "false", "aria-label": label, html: ICONS[key] });
+      b.addEventListener("click", () => {
+        settings[key] = !settings[key];
+        persist({ [key]: settings[key] });
+        syncToggle(b, key, label);
+        applyEffects();
+      });
+      ui.togs[key] = [b, label];
+      end.append(b);
+    }
     const dlBtn = h("button", { class: "ib", type: "button", "data-tip": "Download — choose quality", "aria-label": "Download", html: ICONS.download });
     dlBtn.addEventListener("click", () => {
       try {
@@ -1101,7 +1099,6 @@
     presetKey = key;
     ui.chipRow.textContent = "";
     ui.inlineRow.textContent = "";
-    ui.pips.textContent = "";
     ui.chips = [];
     for (const p of parseSpeedPresets(key)) {
       for (const row of [ui.inlineRow, ui.chipRow]) {
@@ -1117,9 +1114,6 @@
         ui.chips.push(chip);
         row.append(chip);
       }
-      const pip = h("span", { class: "pip" });
-      pip.style.left = pipLeft(speedToPos(p) / SLIDER_STEPS);
-      ui.pips.append(pip);
     }
   }
 
