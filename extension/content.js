@@ -710,7 +710,6 @@
     :host([data-glow]) .bar::before{opacity:1}
     :host([data-glow]) .brand i{background:rgb(var(--amb));box-shadow:0 0 8px rgb(var(--amb))}
     /* Auto-fade: dims while the video plays and you're not using the bar. */
-    :host([data-idle]) .bar{opacity:.3}
     :host([data-playing]) .brand i{animation:breathe 2.4s ease-in-out infinite}
     @keyframes breathe{50%{opacity:.45;transform:scale(.8)}}
 
@@ -1150,20 +1149,110 @@
   let ambCanvas = null;
   let ambCtx = null;
   let ambLast = "";
-  let glowEl = null;
 
-  function clearPlayerGlow() {
-    if (glowEl) {
-      glowEl.style.boxShadow = "";
-      glowEl.style.transition = "";
-      glowEl = null;
+  const Z_DIM = 2147483000;
+  const playerEl = () => $("movie_player") || document.querySelector("#ytd-player");
+  const fsOn = () => !!document.fullscreenElement;
+  let dimEl = null;
+  let glowCv = null;
+  let glowCx = null;
+  let glowTimer = null;
+
+  function holeRect() {
+    const el = playerEl();
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return r.width > 50 && r.height > 50 ? r : null;
+  }
+  // Page-wide black veil with a window cut out for the player.
+  function placeLayers() {
+    const r = holeRect();
+    if (dimEl) {
+      if (r) {
+        const l = Math.round(r.left), t = Math.round(r.top), rr = Math.round(r.right), b = Math.round(r.bottom);
+        dimEl.style.clipPath = "polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0," + l + "px " + t + "px," + l + "px " + b + "px," + rr + "px " + b + "px," + rr + "px " + t + "px," + l + "px " + t + "px)";
+      } else dimEl.style.clipPath = "none";
     }
+    if (glowCv && r) {
+      const P = 110;
+      glowCv.style.left = r.left - P + "px";
+      glowCv.style.top = r.top - P + "px";
+      glowCv.style.width = r.width + P * 2 + "px";
+      glowCv.style.height = r.height + P * 2 + "px";
+      glowCv.style.clipPath =
+        "polygon(evenodd,-400px -400px,calc(100% + 400px) -400px,calc(100% + 400px) calc(100% + 400px),-400px calc(100% + 400px),-400px -400px," +
+        P + "px " + P + "px," + P + "px calc(100% - " + P + "px),calc(100% - " + P + "px) calc(100% - " + P + "px),calc(100% - " + P + "px) " + P + "px," + P + "px " + P + "px)";
+    }
+  }
+  function ensureDim() {
+    if (dimEl && dimEl.isConnected) return;
+    const old = document.getElementById("ct-dim");
+    if (old) old.remove();
+    dimEl = document.createElement("div");
+    dimEl.id = "ct-dim";
+    dimEl.style.cssText = "position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:" + Z_DIM + ";transition:opacity .9s cubic-bezier(.4,0,.2,1);";
+    (document.body || document.documentElement).append(dimEl);
+  }
+  function ensureGlow() {
+    if (glowCv && glowCv.isConnected) return;
+    const old = document.getElementById("ct-glow");
+    if (old) old.remove();
+    glowCv = document.createElement("canvas");
+    glowCv.id = "ct-glow";
+    glowCv.width = 96;
+    glowCv.height = 54;
+    glowCx = glowCv.getContext("2d");
+    glowCv.style.cssText =
+      "position:fixed;pointer-events:none;z-index:" + (Z_DIM + 1) + ";opacity:0;filter:blur(64px) saturate(1.7) brightness(1.15);" +
+      "mix-blend-mode:screen;transition:opacity 1s ease;";
+    (document.body || document.documentElement).append(glowCv);
+  }
+  function glowFrame() {
+    if (!alive()) return stopGlowLoop();
+    if (!settings.ambientGlow) return stopAmbient();
+    const v = video();
+    ensureGlow();
+    if (fsOn() || !v || !v.videoWidth || v.readyState < 2 || isAdShowing() || location.pathname !== "/watch") {
+      glowCv.style.opacity = "0";
+      return;
+    }
+    try {
+      glowCx.drawImage(v, 0, 0, 96, 54);
+    } catch (_) {
+      return;
+    }
+    placeLayers();
+    glowCv.style.opacity = v.paused ? "0.55" : "0.9";
+  }
+  function stopGlowLoop() {
+    clearInterval(glowTimer);
+    glowTimer = null;
+  }
+  function startGlowLoop() {
+    if (glowTimer) return;
+    glowTimer = setInterval(glowFrame, 180);
+    glowFrame();
+  }
+  function clearPlayerGlow() {
+    stopGlowLoop();
+    if (glowCv) glowCv.style.opacity = "0";
   }
   function stopAmbient() {
     ambLast = "";
     clearPlayerGlow();
     if (barUI) barUI.host.removeAttribute("data-glow");
   }
+  let rafPending = false;
+  const onMove = () => {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (dimEl || glowCv) placeLayers();
+    });
+  };
+  window.addEventListener("scroll", onMove, { passive: true, capture: true });
+  window.addEventListener("resize", onMove, { passive: true });
 
   function sampleAmbient() {
     if (!settings.ambientGlow || !barUI) return;
@@ -1201,13 +1290,6 @@
       ambLast = rgb;
       barUI.host.style.setProperty("--amb", rgb);
       barUI.host.setAttribute("data-glow", "");
-      const target = document.querySelector("#ytd-player") || $("movie_player");
-      if (target) {
-        if (glowEl && glowEl !== target) clearPlayerGlow();
-        glowEl = target;
-        target.style.transition = "box-shadow .9s ease";
-        target.style.boxShadow = "0 0 56px 4px rgb(" + rgb.replace(/ /g, ",") + ",0.32)";
-      }
     } catch (_) {}
   }
 
@@ -1215,6 +1297,11 @@
   let lastActivity = 0;
   function setIdle(on) {
     if (barUI) barUI.host.toggleAttribute("data-idle", !!on);
+    if (on && !fsOn()) {
+      ensureDim();
+      placeLayers();
+      requestAnimationFrame(() => dimEl && (dimEl.style.opacity = "1"));
+    } else if (dimEl) dimEl.style.opacity = "0";
   }
   function bumpActivity() {
     setIdle(false);
@@ -1239,7 +1326,10 @@
 
   function applyEffects() {
     if (!settings.ambientGlow) stopAmbient();
-    else sampleAmbient();
+    else {
+      sampleAmbient();
+      startGlowLoop();
+    }
     if (!settings.autoFadeUI) {
       clearTimeout(fadeTimer);
       setIdle(false);
@@ -1250,6 +1340,8 @@
     const v = video();
     barUI.host.toggleAttribute("data-playing", !!(v && !v.paused));
     sampleAmbient();
+    if (settings.ambientGlow) startGlowLoop();
+    if (fsOn() && dimEl) dimEl.style.opacity = "0";
   }
 
   function mountTarget() {
@@ -1278,6 +1370,7 @@
   }
   function removeBar() {
     clearPlayerGlow();
+    if (dimEl) dimEl.style.opacity = "0";
     if (barUI) {
       try {
         barUI.host.remove();
@@ -1331,6 +1424,11 @@
     stopTurbo();
     removeBar();
     removeSegmentBar();
+    stopGlowLoop();
+    for (const id of ["ct-dim", "ct-glow"]) {
+      const e = document.getElementById(id);
+      if (e) e.remove();
+    }
   }
   function tick() {
     if (!alive()) return shutdown();
