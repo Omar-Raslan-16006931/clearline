@@ -310,6 +310,16 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === UPDATE_ALARM) checkForUpdate();
 });
 
+/* The on-page bar's Download button opens the quality picker for its tab. */
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (!msg || msg.type !== "OPEN_DOWNLOAD" || !sender.tab) return false;
+  chrome.tabs.create({
+    url: chrome.runtime.getURL("download.html") + "?tabId=" + sender.tab.id,
+    index: sender.tab.index + 1,
+  });
+  return false;
+});
+
 /* Resolve a single format's final URL without triggering a download —
  * used by the quality picker (download.html) to fetch video/audio streams
  * itself for client-side muxing. */

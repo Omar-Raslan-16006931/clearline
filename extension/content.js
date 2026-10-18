@@ -1,9 +1,12 @@
-/* YT Loop + Shorts Hider — content script
- * - Forces the active <video> to loop, and re-applies it across YouTube's
- *   SPA navigations (so you never have to refresh).
- * - Hides Shorts everywhere (home, sidebar, search, subscriptions) and can
- *   redirect /shorts/ URLs to the normal watch player.
- * - Injects a page-context reader so the popup can list download formats.
+/* ClearTube — content script
+ * Performance rules this file follows (the old version violated all of them):
+ *  - No page-wide MutationObserver. One 1s heartbeat + YouTube's own
+ *    navigation events keep everything in place.
+ *  - Never touch YouTube's layout (no position/overflow/border overrides on
+ *    the player, no body overflow, no page-wide visibility toggles).
+ *  - The control bar lives in a Shadow DOM, is built once, and is updated in
+ *    place — never wiped and rebuilt.
+ *  - Storage writes only on commit (pointer release), never per drag tick.
  */
 (() => {
   "use strict";
@@ -17,11 +20,25 @@
     volumeBoost: 100,
     blockAds: true,
     speed: 1,
-    ambientGlow: true,
-    autoFadeUI: true,
     speedPresets: "1, 1.5, 2, 2.5, 3, 5, 10",
+    speedMode: "slider", // "slider" | "buttons"
   };
   let settings = { ...DEFAULTS };
+
+  const $ = (id) => document.getElementById(id);
+  const video = () => document.querySelector("video");
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+  // A reloaded extension leaves the old content script running in open tabs
+  // with dead chrome.* APIs. Detect that so it cleans up instead of leaving a
+  // second, dead control bar behind.
+  function alive() {
+    try {
+      return !!(chrome.runtime && chrome.runtime.id);
+    } catch (_) {
+      return false;
+    }
+  }
 
   /* ---------- DOWNLOAD: read player data from page context ---------- */
   let latestVideo = null; // { videoId, title, streamingData, playerUrl }
@@ -40,18 +57,16 @@
     latestVideo = e.data.payload;
   });
 
-  // Popup asks the content script for the current video's formats. Ask the
-  // page context to re-read window.ytInitialPlayerResponse right now first —
-  // YouTube can attach higher-bitrate / Premium variants to that object
-  // after the initial page load, so a live read beats the cached snapshot.
+  // The quality picker asks for the current video's formats. Ask the page
+  // context to re-read its player response first so we never serve a stale one.
   try {
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg && msg.type === "GET_FORMATS") {
         const before = latestVideo;
-        try { window.postMessage({ source: "YTLS_REQUEST_GRAB" }, "*"); } catch (_) {}
-        setTimeout(() => {
-          sendResponse({ video: latestVideo || before });
-        }, 250);
+        try {
+          window.postMessage({ source: "YTLS_REQUEST_GRAB" }, "*");
+        } catch (_) {}
+        setTimeout(() => sendResponse({ video: latestVideo || before }), 250);
         return true;
       }
       return false;
@@ -69,54 +84,13 @@
       cb && cb();
     }
   }
-
-  /* ---------- LOOP ---------- */
-  function applyLoop() {
-    const v = document.querySelector("video");
-    if (!v) return;
-    if (settings.loop) {
-      if (!v.loop) v.loop = true;
-    } else if (v.loop) {
-      v.loop = false;
-    }
+  function persist(obj) {
+    try {
+      chrome.storage.sync.set(obj);
+    } catch (_) {}
   }
 
-  function watchVideo() {
-    const v = document.querySelector("video");
-    if (!v || v.__ytlsBound) return;
-    v.__ytlsBound = true;
-    v.addEventListener("ended", () => {
-      if (settings.loop) {
-        v.currentTime = 0;
-        v.play().catch(() => {});
-      }
-    });
-    v.addEventListener("timeupdate", () => trySkip(v));
-    v.addEventListener("durationchange", renderSegmentBar);
-    v.addEventListener("loadedmetadata", renderSegmentBar);
-    v.addEventListener("play", () => { checkAmbientConditions(); checkAutoFadeConditions(); });
-    v.addEventListener("pause", () => { checkAmbientConditions(); checkAutoFadeConditions(); });
-    applyLoop();
-    applySpeed();
-  }
-
-  /* ---------- SPONSOR SKIP (SponsorBlock public API) ---------- */
-  const SKIP_CATEGORIES = ["sponsor", "selfpromo", "interaction"];
-  let sbSegments = [];
-  let sbVideoId = null;
-  let sbLoading = false;
-  let sbTimeSaved = 0; // total seconds skipped, persisted across sessions
-
-  function fmtDur(s) {
-    s = Math.max(0, Math.round(s));
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    if (h) return h + "h " + m + "m";
-    if (m) return m + "m " + sec + "s";
-    return sec + "s";
-  }
-
+  /* ---------- helpers ---------- */
   function currentVideoId() {
     try {
       const u = new URL(location.href);
@@ -127,12 +101,65 @@
       return null;
     }
   }
+  function fmtDur(s) {
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h) return h + "h " + m + "m";
+    if (m) return m + "m " + sec + "s";
+    return sec + "s";
+  }
+  const isAdShowing = () => {
+    const p = $("movie_player") || document.querySelector(".html5-video-player");
+    return !!(p && p.classList.contains("ad-showing"));
+  };
+
+  /* ---------- LOOP ---------- */
+  function applyLoop() {
+    const v = video();
+    if (!v) return;
+    if (settings.loop) {
+      if (!v.loop) v.loop = true;
+    } else if (v.loop) {
+      v.loop = false;
+    }
+  }
+
+  function watchVideo() {
+    const v = video();
+    if (!v || v.__ctBound) return;
+    v.__ctBound = true;
+    v.addEventListener("ended", () => {
+      if (settings.loop) {
+        v.currentTime = 0;
+        v.play().catch(() => {});
+      }
+    });
+    v.addEventListener("timeupdate", () => trySkip(v));
+    v.addEventListener("durationchange", renderSegmentBar);
+    v.addEventListener("loadedmetadata", () => {
+      renderSegmentBar();
+      applySpeed();
+    });
+    v.addEventListener("playing", () => applySpeed());
+    applyLoop();
+    applySpeed(true);
+    applyBoost();
+  }
+
+  /* ---------- SPONSOR SKIP (SponsorBlock public API) ---------- */
+  const SKIP_CATEGORIES = ["sponsor", "selfpromo", "interaction"];
+  let sbSegments = [];
+  let sbVideoId = null;
+  let sbLoading = false;
+  let sbTimeSaved = 0;
 
   // Segments are fetched by the background worker (content-script fetches to
   // sponsor.ajay.app are blocked by CORS in MV3; the background bypasses it).
   async function maybeLoadSegments() {
     if (!settings.skipSponsors) {
-      sbSegments = [];
+      if (sbSegments.length) sbSegments = [];
       renderSegmentBar();
       return;
     }
@@ -141,13 +168,14 @@
     sbVideoId = vid;
     sbLoading = true;
     sbSegments = [];
+    renderSegmentBar(); // clears stale markers from the previous video
     try {
       const resp = await chrome.runtime.sendMessage({
         type: "GET_SB_SEGMENTS",
         videoId: vid,
         categories: SKIP_CATEGORIES,
       });
-      if (resp && resp.ok && Array.isArray(resp.segments)) {
+      if (vid === currentVideoId() && resp && resp.ok && Array.isArray(resp.segments)) {
         sbSegments = resp.segments.sort((a, b) => a.start - b.start);
       }
     } catch (_) {}
@@ -169,48 +197,45 @@
       default: return "#00d400";
     }
   }
-
+  let segSig = "";
   function removeSegmentBar() {
-    const o = document.getElementById("ytls-segbar");
+    const o = $("ytls-segbar");
     if (o) o.remove();
+    segSig = "";
   }
-
   function renderSegmentBar() {
-    if (!settings.skipSponsors) {
+    if (!settings.skipSponsors || !sbSegments.length) {
       removeSegmentBar();
       return;
     }
-    const v = document.querySelector("video");
-    const bar =
-      document.querySelector(".ytp-progress-bar") ||
-      document.querySelector(".ytp-progress-bar-container");
-    if (!v || !bar || !sbSegments.length) return;
+    const v = video();
+    const bar = document.querySelector(".ytp-progress-bar") || document.querySelector(".ytp-progress-bar-container");
+    if (!v || !bar) return;
     const dur = v.duration;
     if (!dur || !isFinite(dur) || dur <= 0) return;
 
-    let overlay = document.getElementById("ytls-segbar");
+    let overlay = $("ytls-segbar");
+    const sig = currentVideoId() + "|" + Math.round(dur) + "|" + sbSegments.length;
+    if (overlay && sig === segSig) return; // already drawn — don't thrash the DOM
     if (!overlay) {
       overlay = document.createElement("div");
       overlay.id = "ytls-segbar";
-      overlay.style.cssText =
-        "position:absolute;left:0;top:0;height:100%;width:100%;pointer-events:none;z-index:35;";
+      overlay.style.cssText = "position:absolute;left:0;top:0;height:100%;width:100%;pointer-events:none;z-index:35;";
       bar.appendChild(overlay);
     }
-    overlay.innerHTML = "";
+    segSig = sig;
+    overlay.textContent = "";
+    const frag = document.createDocumentFragment();
     for (const seg of sbSegments) {
-      const left = Math.max(0, Math.min(100, (seg.start / dur) * 100));
+      const left = clamp((seg.start / dur) * 100, 0, 100);
       const width = Math.max(0.15, Math.min(100 - left, ((seg.end - seg.start) / dur) * 100));
       const d = document.createElement("div");
       d.style.cssText =
-        "position:absolute;top:0;height:100%;left:" +
-        left +
-        "%;width:" +
-        width +
-        "%;background:" +
-        categoryColor(seg.cat) +
-        ";opacity:.85;";
-      overlay.appendChild(d);
+        "position:absolute;top:0;height:100%;left:" + left + "%;width:" + width + "%;background:" +
+        categoryColor(seg.cat) + ";opacity:.85;";
+      frag.appendChild(d);
     }
+    overlay.appendChild(frag);
   }
 
   function trySkip(v) {
@@ -232,43 +257,40 @@
 
   function sbToast(cat, saved) {
     try {
-      const label =
-        cat === "selfpromo"
-          ? "self-promo"
-          : cat === "interaction"
-          ? "interaction reminder"
-          : "sponsor";
-      let el = document.getElementById("ytls-toast");
+      const label = cat === "selfpromo" ? "self-promo" : cat === "interaction" ? "interaction reminder" : "sponsor";
+      let el = $("ytls-toast");
       if (!el) {
         el = document.createElement("div");
         el.id = "ytls-toast";
         el.style.cssText =
-          "position:fixed;left:24px;bottom:96px;z-index:99999;" +
-          "background:rgba(15,15,15,.95);color:#fff;" +
-          "font-family:system-ui,-apple-system,Roboto,sans-serif;" +
-          "padding:16px 22px;border-radius:14px;border-left:6px solid #ff0033;" +
-          "box-shadow:0 8px 26px rgba(0,0,0,.55);transition:opacity .3s;" +
-          "pointer-events:none;max-width:360px";
+          "position:fixed;left:24px;bottom:96px;z-index:99999;max-width:320px;" +
+          "background:#1a1a1c;color:#f5f5f7;font-family:Roboto,Arial,sans-serif;" +
+          "padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);" +
+          "box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;transform:translateY(8px);" +
+          "transition:opacity .2s cubic-bezier(.4,0,.2,1),transform .2s cubic-bezier(.4,0,.2,1);pointer-events:none;";
         document.body.appendChild(el);
       }
-      el.innerHTML =
-        '<div style="font-size:22px;font-weight:800;line-height:1.15">Skipped ' +
-        label +
-        "</div>" +
-        '<div style="font-size:14px;color:#c9c9c9;margin-top:6px">+' +
-        fmtDur(saved || 0) +
-        " skipped &nbsp;·&nbsp; " +
-        fmtDur(sbTimeSaved) +
-        " saved total</div>";
-      el.style.opacity = "1";
+      el.textContent = "";
+      const t = document.createElement("div");
+      t.style.cssText = "font-size:13px;font-weight:600;line-height:1.4;";
+      t.textContent = "Skipped " + label;
+      const s = document.createElement("div");
+      s.style.cssText = "font-size:11px;color:#a8a8ad;margin-top:4px;line-height:1.4;";
+      s.textContent = fmtDur(saved || 0) + " skipped · " + fmtDur(sbTimeSaved) + " saved in total";
+      el.append(t, s);
+      requestAnimationFrame(() => {
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
       clearTimeout(el.__t);
       el.__t = setTimeout(() => {
         el.style.opacity = "0";
+        el.style.transform = "translateY(8px)";
       }, 3000);
     } catch (_) {}
   }
 
-  /* ---------- BLOCK ADS (best-effort, DOM/player based) ---------- */
+  /* ---------- BLOCK ADS ---------- */
   const AD_STYLE_ID = "ytls-adblock-style";
   const AD_CSS = `
     #player-ads, #masthead-ad, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer,
@@ -281,7 +303,7 @@
     }
   `;
   function setAdStyle(on) {
-    const ex = document.getElementById(AD_STYLE_ID);
+    const ex = $(AD_STYLE_ID);
     if (on) {
       if (!ex) {
         const s = document.createElement("style");
@@ -293,20 +315,19 @@
       ex.remove();
     }
   }
-  let adActive = false;
-  let priorRate = 1;
 
-  function clickSkip() {
-    // 1) Known class-based skip buttons (classic + modern).
-    const sel = [
-      ".ytp-ad-skip-button-modern",
-      ".ytp-ad-skip-button",
-      ".ytp-skip-ad-button",
-      ".ytp-ad-skip-button-container button",
-      "button.ytp-ad-skip-button-modern",
-      ".ytp-ad-skip-button-slot button",
-    ];
-    for (const s of sel) {
+  let adActive = false;
+  let adSeekedFor = null;
+
+  const SKIP_SELECTORS = [
+    ".ytp-ad-skip-button-modern",
+    ".ytp-ad-skip-button",
+    ".ytp-skip-ad-button",
+    ".ytp-ad-skip-button-container button",
+    ".ytp-ad-skip-button-slot button",
+  ];
+  function clickSkip(player) {
+    for (const s of SKIP_SELECTORS) {
       const btn = document.querySelector(s);
       if (btn) {
         try {
@@ -315,20 +336,12 @@
         return true;
       }
     }
-    // 2) Text-based fallback for newer full-screen ad layouts: find a
-    //    "Skip"/"Skip Ad" control inside the player, whatever its class is.
-    const player =
-      document.getElementById("movie_player") ||
-      document.querySelector(".html5-video-player") ||
-      document.querySelector("ytd-player") ||
-      document.querySelector("#player");
+    // Text fallback for newer ad layouts — only ever runs while an ad is on screen.
     if (player) {
-      const cands = player.querySelectorAll(
-        'button, [role="button"], a, tp-yt-paper-button, yt-button-shape'
-      );
+      const cands = player.querySelectorAll('button, [role="button"]');
       for (const b of cands) {
         const t = (b.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
-        if (t === "skip" || t === "skip ad" || t === "skip ads" || /^skip\b/.test(t)) {
+        if (/^skip( ads?)?$/.test(t)) {
           try {
             b.click();
           } catch (_) {}
@@ -341,98 +354,125 @@
 
   function handleAds() {
     if (!settings.blockAds) return;
-    const player =
-      document.getElementById("movie_player") ||
-      document.querySelector(".html5-video-player");
-    const v = document.querySelector("video");
+    const player = $("movie_player") || document.querySelector(".html5-video-player");
     const isAd = !!(player && player.classList.contains("ad-showing"));
 
-    // 1) Always try to click a Skip button if one is showing.
-    clickSkip();
-
-    // 2) Close overlay/banner ads.
-    const ov = document.querySelector(
-      ".ytp-ad-overlay-close-button, .ytp-ad-overlay-close-container"
-    );
-    if (ov) {
-      try {
-        ov.click();
-      } catch (_) {}
+    if (!isAd && !adActive) {
+      // Cheap idle path: overlay banners + the "ad blockers not allowed" popup.
+      const ov = document.querySelector(".ytp-ad-overlay-close-button, .ytp-ad-overlay-close-container");
+      if (ov) {
+        try {
+          ov.click();
+        } catch (_) {}
+      }
+      const enforce = document.querySelector("ytd-enforcement-message-view-model");
+      if (enforce) {
+        const dlg = enforce.closest("tp-yt-paper-dialog") || enforce;
+        try {
+          dlg.remove();
+        } catch (_) {}
+        document.querySelectorAll("tp-yt-iron-overlay-backdrop").forEach((b) => b.remove());
+        const v = video();
+        if (v && v.paused) v.play().catch(() => {});
+      }
+      return;
     }
 
-    // 3) Ad playing → force it to finish: seek to the end, and if the ad
-    //    stream isn't seekable, blast through it at max speed.
+    const v = video();
     if (isAd && v) {
-      if (!adActive) {
-        adActive = true;
-        priorRate = v.playbackRate || 1;
-      }
+      adActive = true;
+      clickSkip(player);
+      // Seek past the ad once per ad (not every tick — repeated seeks stutter).
       try {
-        if (isFinite(v.duration) && v.duration > 0) {
-          v.currentTime = v.duration;
+        const d = v.duration;
+        if (isFinite(d) && d > 0) {
+          if (adSeekedFor !== d) {
+            adSeekedFor = d;
+            v.currentTime = d;
+          }
         } else if (v.playbackRate < 16) {
           v.playbackRate = 16;
         }
       } catch (_) {}
-    } else if (adActive && v) {
-      // Ad just ended → restore normal playback speed.
+    } else if (adActive) {
       adActive = false;
-      try {
-        v.playbackRate = priorRate || 1;
-      } catch (_) {}
-    }
-
-    // 4) Dismiss the "ad blockers are not allowed" enforcement popup and resume.
-    const enforce = document.querySelector(
-      "ytd-enforcement-message-view-model, tp-yt-paper-dialog:has(ytd-enforcement-message-view-model)"
-    );
-    if (enforce) {
-      try {
-        enforce.remove();
-      } catch (_) {}
-      document.querySelectorAll("tp-yt-iron-overlay-backdrop").forEach((b) => {
-        try {
-          b.remove();
-        } catch (_) {}
-      });
-      if (v && v.paused) v.play().catch(() => {});
+      adSeekedFor = null;
+      applySpeed(true); // restore our speed (or 1×) after the ad
     }
   }
+
   let adTimer = null;
+  function scheduleAdTick() {
+    clearTimeout(adTimer);
+    adTimer = setTimeout(() => {
+      if (!alive()) return;
+      try {
+        handleAds();
+      } catch (_) {}
+      scheduleAdTick();
+    }, adActive ? 150 : 500);
+  }
 
   /* ---------- VOLUME BOOST (Web Audio, up to 500%) ---------- */
   let audioCtx = null;
-  function gainFor(v) {
-    if (!v) return null;
-    if (v.__ytlsGain) return v.__ytlsGain;
+  let unlockArmed = false;
+
+  function userHasInteracted() {
+    try {
+      return !navigator.userActivation || navigator.userActivation.hasBeenActive;
+    } catch (_) {
+      return true;
+    }
+  }
+  function armAudioUnlock() {
+    if (unlockArmed) return;
+    unlockArmed = true;
+    const go = () => {
+      unlockArmed = false;
+      applyBoost();
+    };
+    ["pointerdown", "keydown"].forEach((t) => document.addEventListener(t, go, { once: true, capture: true }));
+  }
+
+  function audioGraphFor(v) {
+    if (v.__ctAudio) return v.__ctAudio;
+    // Routing a <video> through Web Audio while the context is suspended
+    // silences it. Only build the graph once the browser lets audio run.
+    if (!userHasInteracted()) {
+      armAudioUnlock();
+      return null;
+    }
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
       const src = audioCtx.createMediaElementSource(v);
-      const g = audioCtx.createGain();
-      src.connect(g);
-      g.connect(audioCtx.destination);
-      v.__ytlsGain = g;
-      return g;
+      const gain = audioCtx.createGain();
+      const limiter = audioCtx.createDynamicsCompressor(); // tames clipping at high boost
+      limiter.threshold.value = -6;
+      limiter.knee.value = 12;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.2;
+      src.connect(gain);
+      gain.connect(limiter);
+      limiter.connect(audioCtx.destination);
+      v.__ctAudio = { gain, limiter };
+      return v.__ctAudio;
     } catch (_) {
       return null;
     }
   }
+
   function applyBoost() {
-    const v = document.querySelector("video");
+    const v = video();
     if (!v) return;
-    const boost =
-      Math.max(0, Math.min(500, Number(settings.volumeBoost) || 100)) / 100;
-    // Only route through Web Audio once a boost above 100% is requested, so
-    // normal playback is never altered for users who don't use the booster.
-    if (boost > 1 || v.__ytlsGain) {
-      const g = gainFor(v);
-      if (g) {
-        g.gain.value = boost;
-        if (audioCtx && audioCtx.state === "suspended") {
-          audioCtx.resume().catch(() => {});
-        }
-      }
-    }
+    const boost = clamp(Number(settings.volumeBoost) || 100, 100, 500) / 100;
+    // Don't touch the audio path at all until a boost is requested.
+    if (boost <= 1 && !v.__ctAudio) return;
+    const g = audioGraphFor(v);
+    if (!g || !audioCtx) return;
+    g.gain.gain.setTargetAtTime(boost, audioCtx.currentTime, 0.03);
+    g.limiter.ratio.value = boost > 1 ? 8 : 1;
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
   }
 
   /* ---------- SHOW DISLIKES (Return YouTube Dislike API) ---------- */
@@ -444,7 +484,6 @@
     if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K";
     return String(n);
   }
-
   async function loadDislikes() {
     if (!settings.showDislikes) return;
     const vid = currentVideoId();
@@ -453,18 +492,14 @@
       dislikeVid = vid;
       lastDislikes = null;
       try {
-        const resp = await chrome.runtime.sendMessage({
-          type: "GET_DISLIKES",
-          videoId: vid,
-        });
-        if (resp && resp.ok && typeof resp.dislikes === "number") {
+        const resp = await chrome.runtime.sendMessage({ type: "GET_DISLIKES", videoId: vid });
+        if (vid === currentVideoId() && resp && resp.ok && typeof resp.dislikes === "number") {
           lastDislikes = resp.dislikes;
         }
       } catch (_) {}
     }
     injectDislikes();
   }
-
   function injectDislikes() {
     if (!settings.showDislikes || lastDislikes == null) return;
     const btn =
@@ -501,9 +536,8 @@
       display: none !important;
     }
   `;
-
   function setShortsHidden(on) {
-    const existing = document.getElementById(STYLE_ID);
+    const existing = $(STYLE_ID);
     if (on) {
       if (!existing) {
         const style = document.createElement("style");
@@ -515,1029 +549,643 @@
       existing.remove();
     }
   }
-
   function maybeRedirectShorts() {
     if (!settings.hideShorts || !settings.redirectShorts) return;
     const m = location.pathname.match(/^\/shorts\/([\w-]+)/);
-    if (m) {
-      location.replace("https://www.youtube.com/watch?v=" + m[1]);
-    }
+    if (m) location.replace("https://www.youtube.com/watch?v=" + m[1]);
   }
 
-  /* ---------- apply everything ---------- */
-  /* ---------- PLAYBACK SPEED (Customizable presets) ---------- */
+  /* ---------- PLAYBACK SPEED ---------- */
   const SPEED_MIN = 0.25;
+  const SPEED_MAX = 100;
+  const SLIDER_STEPS = 1000;
+  const DEFAULT_PRESETS = [1, 1.5, 2, 2.5, 3, 5, 10];
+  const BASE_SNAPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 10, 16, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
   function parseSpeedPresets(str) {
-    const raw = (str || "1, 1.5, 2, 2.5, 3, 5, 10").split(/[\s,]+/);
-    const parsed = raw.map(Number).filter((n) => !isNaN(n) && n >= 0.1 && n <= 100);
+    const raw = String(str || "").split(/[\s,]+/);
+    const parsed = raw.map(Number).filter((n) => isFinite(n) && n >= SPEED_MIN && n <= SPEED_MAX);
     const set = Array.from(new Set(parsed)).sort((a, b) => a - b);
-    return set.length ? set : [1, 1.5, 2, 2.5, 3, 5, 10];
+    return set.length ? set : DEFAULT_PRESETS.slice();
+  }
+  let snapCache = { key: null, pts: [] };
+  function snapPoints() {
+    const key = String(settings.speedPresets || "");
+    if (snapCache.key !== key) {
+      snapCache = {
+        key,
+        pts: Array.from(new Set([...BASE_SNAPS, ...parseSpeedPresets(key)])).sort((a, b) => a - b),
+      };
+    }
+    return snapCache.pts;
   }
 
-  function getSpeedSnapPoints() {
-    const presets = parseSpeedPresets(settings.speedPresets);
-    const base = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.5, 4, 5, 10, 16, 20, 50, 100];
-    return Array.from(new Set([...base, ...presets])).sort((a, b) => a - b);
-  }
-
-  function getSpeedMax() {
-    const presets = parseSpeedPresets(settings.speedPresets);
-    const maxPreset = Math.max(...presets, 10);
-    return Math.min(100, Math.max(maxPreset, Number(settings.speed) || 1));
-  }
-
+  // Browsers clamp playbackRate at 16×. Above that we nudge currentTime
+  // forward on a timer ("turbo"), skipping ticks while the player is
+  // seeking/buffering so seeks never pile up.
   let turboTimer = null;
+  let turboSpeed = 0;
+  const TURBO_MS = 200;
+  function startTurbo(s) {
+    if (turboTimer && turboSpeed === s) return;
+    stopTurbo();
+    turboSpeed = s;
+    turboTimer = setInterval(() => {
+      const v = video();
+      if (!v || v.paused || v.seeking || v.readyState < 3 || isAdShowing()) return;
+      try {
+        const next = v.currentTime + (turboSpeed - 16) * (TURBO_MS / 1000);
+        v.currentTime = isFinite(v.duration) ? Math.min(next, v.duration - 0.25) : next;
+      } catch (_) {}
+    }, TURBO_MS);
+  }
+  function stopTurbo() {
+    if (turboTimer) clearInterval(turboTimer);
+    turboTimer = null;
+    turboSpeed = 0;
+  }
 
-  function applySpeed() {
-    const v = document.querySelector("video");
+  // At 1× we leave YouTube's own speed menu alone unless `force` is set.
+  function applySpeed(force) {
+    const v = video();
     if (!v) return;
-    const max = getSpeedMax();
-    const s = Math.max(SPEED_MIN, Math.min(max, Number(settings.speed) || 1));
-    // Browsers clamp playbackRate at 16x, so above that we nudge currentTime
-    // forward on a timer ("turbo") to reach the requested speed.
+    const s = clamp(Number(settings.speed) || 1, SPEED_MIN, SPEED_MAX);
+    if (!force && s === 1 && !turboTimer) return;
+    const native = Math.min(16, s);
     try {
-      v.playbackRate = Math.min(16, s);
+      if (Math.abs(v.playbackRate - native) > 0.001) v.playbackRate = native;
     } catch (_) {}
     if (s > 16) startTurbo(s);
     else stopTurbo();
   }
-  function startTurbo(s) {
-    stopTurbo();
-    turboTimer = setInterval(() => {
-      const v = document.querySelector("video");
-      if (!v || v.paused) return;
-      const p = document.getElementById("movie_player");
-      if (p && p.classList.contains("ad-showing")) return;
-      try {
-        v.currentTime += (s - 16) * 0.1; // 16x from playbackRate + the remainder
-      } catch (_) {}
-    }, 100);
-  }
-  function stopTurbo() {
-    if (turboTimer) {
-      clearInterval(turboTimer);
-      turboTimer = null;
-    }
-  }
-  function setSpeed(s, persist) {
+  function setSpeed(s, commit) {
     settings.speed = s;
-    if (persist !== false) {
-      try {
-        chrome.storage.sync.set({ speed: s });
-      } catch (_) {}
-    }
-    applySpeed();
+    if (commit) persist({ speed: s });
+    applySpeed(true);
   }
-  function setVolumeBoost(v, persist) {
+  function setVolumeBoost(v, commit) {
     settings.volumeBoost = v;
-    if (persist !== false) {
-      try {
-        chrome.storage.sync.set({ volumeBoost: v });
-      } catch (_) {}
-    }
+    if (commit) persist({ volumeBoost: v });
     applyBoost();
   }
-  function fmtSpeed(s) {
-    return (Math.abs(s - Math.round(s)) < 0.001 ? Math.round(s) : Math.round(s * 100) / 100) + "×";
-  }
 
-  /* ---------- speed slider: logarithmic position with magnetic snap points ---------- */
-  const SLIDER_STEPS = 1000;
+  // Slider position is logarithmic so 0.25×–100× gets proportionate resolution.
   function speedToPos(s) {
-    const max = getSpeedMax();
-    const c = Math.max(SPEED_MIN, Math.min(max, s));
-    return Math.round((SLIDER_STEPS * Math.log(c / SPEED_MIN)) / Math.log(max / SPEED_MIN));
+    const c = clamp(s, SPEED_MIN, SPEED_MAX);
+    return Math.round((SLIDER_STEPS * Math.log(c / SPEED_MIN)) / Math.log(SPEED_MAX / SPEED_MIN));
   }
   function posToSpeed(pos) {
-    const max = getSpeedMax();
-    return SPEED_MIN * Math.pow(max / SPEED_MIN, pos / SLIDER_STEPS);
+    return SPEED_MIN * Math.pow(SPEED_MAX / SPEED_MIN, pos / SLIDER_STEPS);
   }
   function niceRound(s) {
-    if (s < 1) return Math.round(s * 20) / 20; // nearest 0.05
-    if (s < 10) return Math.round(s * 10) / 10; // nearest 0.1
-    return Math.round(s); // nearest 1
+    if (s < 1) return Math.round(s * 20) / 20;
+    if (s < 10) return Math.round(s * 10) / 10;
+    return Math.round(s);
   }
+  // Magnetic snap: pull toward the nearest snap point when within ~6% (log distance).
   function magnetize(s) {
-    let best = null,
-      bestDist = Infinity;
-    const snapPoints = getSpeedSnapPoints();
-    for (const p of snapPoints) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const p of snapPoints()) {
       const dist = Math.abs(Math.log(s / p));
       if (dist < bestDist) {
         bestDist = dist;
         best = p;
       }
     }
-    return bestDist < 0.06 ? best : niceRound(s);
+    return bestDist < 0.06 ? { value: best, snapped: true } : { value: niceRound(s), snapped: false };
   }
-  function ensureSpeedSliderStyle() {
-    if (document.getElementById("ct-speed-style")) return;
-    const style = document.createElement("style");
-    style.id = "ct-speed-style";
-    style.textContent =
-      "#ct-speed-slider,#ct-vol-slider{-webkit-appearance:none;appearance:none;width:" + SPEED_TRACK_WIDTH + "px;height:6px;border-radius:999px;" +
-      "background:rgba(128,128,128,0.35);outline:none;vertical-align:middle;margin:0;}" +
-      "#ct-vol-slider{width:130px;}" +
-      "#ct-speed-slider::-webkit-slider-thumb,#ct-vol-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;" +
-      "border-radius:50%;background:#ff5277;border:2px solid #fff;cursor:pointer;margin-top:-4px;" +
-      "box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
-      "#ct-speed-slider::-moz-range-thumb,#ct-vol-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ff5277;" +
-      "border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.4);}" +
-      "#ct-speed-slider::-moz-range-track,#ct-vol-slider::-moz-range-track{height:6px;border-radius:999px;background:rgba(128,128,128,0.35);}" +
-      "#ct-speed-pips{position:relative;width:" + SPEED_TRACK_WIDTH + "px;height:4px;margin:2px 0 4px 0;pointer-events:none;}" +
-      ".ct-speed-pip{position:absolute;top:0;width:2px;height:4px;background:rgba(255,255,255,0.3);border-radius:1px;transform:translateX(-50%);}" +
-      "#ct-speed-btn-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:440px;margin-top:2px;}" +
-      ".ct-speed-pill{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);" +
-      "color:#ccc;border-radius:6px;padding:3px 8px;font:600 11px Roboto,system-ui,sans-serif;cursor:pointer;line-height:1.2;" +
-      "transition:all 0.15s ease;user-select:none;white-space:nowrap;}" +
-      ".ct-speed-pill:hover{background:rgba(255,82,119,0.22);border-color:#ff5277;color:#fff;transform:translateY(-1px);}" +
-      ".ct-speed-pill.active{background:#ff5277 !important;border-color:#ff5277 !important;color:#fff !important;font-weight:700 !important;" +
-      "box-shadow:0 1px 8px rgba(255,82,119,0.45);}" +
-      "#ct-speed-edit-btn{display:inline-flex;align-items:center;gap:3px;background:rgba(255,82,119,0.12);color:#ff6f8b;" +
-      "border:1px solid rgba(255,82,119,0.35);border-radius:6px;padding:2px 7px;font:600 11px Roboto,system-ui,sans-serif;" +
-      "cursor:pointer;line-height:1.2;transition:all 0.15s ease;user-select:none;margin-left:2px;}" +
-      "#ct-speed-edit-btn:hover{background:rgba(255,82,119,0.25);border-color:#ff5277;color:#fff;box-shadow:0 0 8px rgba(255,82,119,0.35);}" +
-      "#ct-speed-edit-btn.active{background:#ff5277;color:#fff;border-color:#ff5277;}" +
-      "#ct-speed-popover{position:absolute;top:calc(100% + 8px);left:0;z-index:9999999;width:390px;max-width:92vw;" +
-      "background:#111015;border:1px solid rgba(255,82,119,0.4);border-radius:12px;padding:14px 16px;" +
-      "box-shadow:0 16px 40px rgba(0,0,0,0.85),0 0 25px rgba(255,82,119,0.15);color:#f1f1f1;font-family:Roboto,system-ui,sans-serif;box-sizing:border-box;}" +
-      "#ct-speed-popover *{box-sizing:border-box;}" +
-      ".ct-pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);}" +
-      ".ct-pop-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px;}" +
-      ".ct-pop-tag{font-size:9.5px;font-weight:700;background:rgba(255,82,119,0.2);color:#ff6f8b;padding:1px 6px;border-radius:999px;letter-spacing:0.5px;text-transform:uppercase;}" +
-      ".ct-pop-close{background:transparent;border:none;color:#888;font-size:16px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:4px;}" +
-      ".ct-pop-close:hover{color:#fff;background:rgba(255,255,255,0.1);}" +
-      ".ct-pop-sec-title{font-size:11px;font-weight:600;color:#aaa;margin:9px 0 5px 0;text-transform:uppercase;letter-spacing:0.5px;}" +
-      ".ct-pop-packs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}" +
-      ".ct-pop-pack-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:#ccc;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.15s ease;}" +
-      ".ct-pop-pack-btn:hover{background:rgba(255,82,119,0.15);border-color:#ff5277;color:#ff8fa3;}" +
-      ".ct-pop-chips-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding:3px;margin-bottom:10px;}" +
-      ".ct-pop-chips-grid::-webkit-scrollbar{width:4px;}" +
-      ".ct-pop-chips-grid::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px;}" +
-      ".ct-pop-chip{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:#aaa;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;min-width:44px;text-align:center;cursor:pointer;user-select:none;transition:all 0.15s ease;}" +
-      ".ct-pop-chip:hover{border-color:rgba(255,82,119,0.5);color:#fff;}" +
-      ".ct-pop-chip.active{background:#ff5277 !important;border-color:#ff5277 !important;color:#fff !important;font-weight:700;box-shadow:0 2px 8px rgba(255,82,119,0.4);}" +
-      ".ct-pop-input-row{display:flex;gap:6px;margin-bottom:10px;}" +
-      ".ct-pop-input{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:7px 10px;color:#fff;font:500 12px Roboto,monospace,sans-serif;outline:none;}" +
-      ".ct-pop-input:focus{border-color:#ff5277;box-shadow:0 0 0 2px rgba(255,82,119,0.25);}" +
-      ".ct-pop-actions{display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);gap:8px;}" +
-      ".ct-pop-save-btn{background:#ff5277;color:#fff;border:none;border-radius:6px;padding:7px 16px;font:700 12px Roboto,system-ui,sans-serif;cursor:pointer;transition:background 0.15s ease;}" +
-      ".ct-pop-save-btn:hover{background:#ff3360;}" +
-      ".ct-pop-reset-btn{background:transparent;border:1px solid rgba(255,255,255,0.15);color:#aaa;border-radius:6px;padding:6px 12px;font:500 11px Roboto,system-ui,sans-serif;cursor:pointer;}" +
-      ".ct-pop-reset-btn:hover{color:#fff;border-color:rgba(255,255,255,0.3);}" +
-      ".ct-pop-saved-msg{color:#4ade80;font-size:11px;font-weight:600;display:none;}";
-    document.head.appendChild(style);
+  function fmtSpeed(s) {
+    return (Math.abs(s - Math.round(s)) < 0.001 ? Math.round(s) : Math.round(s * 100) / 100) + "×";
   }
-  const SPEED_TRACK_WIDTH = 300;
 
-  /* ---------- ON-PAGE CONTROL BAR (below the video) ---------- */
-  function barBtn(text, active, onClick, title) {
-    const b = document.createElement("button");
-    b.textContent = text;
-    if (title) b.title = title;
-    b.style.cssText =
-      "font:600 12px Roboto,system-ui,sans-serif;cursor:pointer;border-radius:8px;padding:6px 10px;line-height:1;" +
-      "border:1px solid " +
-      (active ? "#ff5277" : "rgba(128,128,128,0.35)") +
-      ";background:" +
-      (active ? "rgba(255,82,119,0.16)" : "transparent") +
-      ";color:" +
-      (active ? "#ff6f8b" : "var(--yt-spec-text-primary, #f1f1f1)") +
-      ";";
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
-      onClick();
-    });
-    return b;
+  /* ---------- CONTROL BAR (under the player) ----------
+   * Design rules (Apple HIG-style audit):
+   *  Layout       one 44px row; presets live in a popover, toggles are icons
+   *  Type scale   11 caption · 13 body · 15 speed value (accent, the focal point)
+   *  Spacing      4px grid → 4 / 6 / 8 / 12
+   *  Contrast     text ≥ 4.5:1, track/controls ≥ 3:1 in dark and light themes
+   *  Motion       120–200ms, cubic-bezier(.4,0,.2,1), transform/opacity/color only
+   */
+  const BAR_CSS = `
+    :host{
+      all:initial;display:block;margin:8px 0;contain:layout;
+      font-family:Roboto,"YouTube Noto",Arial,sans-serif;color:var(--text);
+      --ease:cubic-bezier(.4,0,.2,1);
+      --surface:#1a1a1c;--border:rgba(255,255,255,.10);--text:#f5f5f7;--text2:#a8a8ad;
+      --track:rgba(255,255,255,.32);--accent:#ff5277;--accent-soft:rgba(255,82,119,.16);
+      --on-accent:#1a1a1c;--hover:rgba(255,255,255,.08);--thumb:#fff;
+    }
+    :host([data-theme="light"]){
+      --surface:#f6f6f7;--border:rgba(0,0,0,.10);--text:#0f0f0f;--text2:#5f5f66;
+      --track:rgba(0,0,0,.45);--accent:#d11f4b;--accent-soft:rgba(209,31,75,.10);
+      --on-accent:#fff;--hover:rgba(0,0,0,.06);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    .bar{
+      position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:44px;padding:6px 8px 6px 12px;
+      background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    }
+    .brand{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
+    .brand i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+    .sep{width:1px;height:20px;background:var(--border)}
+    .grp{position:relative;display:flex;align-items:center;gap:8px;min-width:0}
+    .speed{flex:1 1 220px}
+    .vol{flex:0 1 180px}
+    .end{display:flex;align-items:center;gap:4px;margin-left:auto}
+
+    .val{
+      width:52px;height:28px;padding:0 6px;border:1px solid transparent;border-radius:8px;background:transparent;
+      font:600 15px Roboto,Arial,sans-serif;color:var(--accent);font-variant-numeric:tabular-nums;outline:none;
+      transition:border-color .12s var(--ease),background-color .12s var(--ease);
+    }
+    .val:hover{background:var(--hover)}
+    .val:focus{border-color:var(--accent);background:transparent}
+    .num{min-width:36px;font-size:13px;font-weight:500;color:var(--text2);font-variant-numeric:tabular-nums;text-align:right}
+
+    .slider{position:relative;flex:1;min-width:96px}
+    input[type=range]{
+      -webkit-appearance:none;appearance:none;display:block;width:100%;height:20px;background:transparent;cursor:pointer;--p:0%;border-radius:6px;
+    }
+    input[type=range]::-webkit-slider-runnable-track{
+      height:4px;border-radius:999px;background:linear-gradient(to right,var(--accent) var(--p),var(--track) var(--p));
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;
+      background:var(--thumb);border:0;box-shadow:0 0 0 1px rgba(0,0,0,.18),0 1px 3px rgba(0,0,0,.35);
+      transition:transform .12s var(--ease);
+    }
+    input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
+    :is(input,button):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .pips{position:absolute;left:0;right:0;bottom:1px;height:3px;pointer-events:none}
+    .pip{position:absolute;top:0;width:1px;height:3px;background:var(--track);transform:translateX(-50%)}
+
+    button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+    .ib{
+      display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--text2);flex:none;
+      transition:background-color .12s var(--ease),color .12s var(--ease);
+    }
+    .ib:hover{background:var(--hover);color:var(--text)}
+    .ib[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
+    .ib svg,.glyph svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .glyph{display:inline-flex;color:var(--text2);flex:none}
+
+    .pop{
+      position:absolute;z-index:10;top:calc(100% + 10px);left:0;width:300px;max-width:calc(100vw - 32px);display:grid;gap:10px;padding:12px;
+      background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.35);
+      opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .16s var(--ease),transform .16s var(--ease);
+    }
+    .pop.open{opacity:1;transform:none;pointer-events:auto}
+    .cap{font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)}
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
+    /* Inline preset buttons that take the slider's place. One row; scrolls sideways if it runs out of room. */
+    .inline{flex:1;min-width:96px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
+    .inline::-webkit-scrollbar{display:none}
+    .inline .chip{flex:none;padding:0 8px}
+    [hidden]{display:none!important}
+    /* Segmented control: slider ↔ buttons. Selected segment = filled + tinted. */
+    .seg{display:inline-flex;flex:none;padding:2px;gap:2px;border-radius:8px;background:var(--hover)}
+    .seg button{display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:6px;color:var(--text2);
+      transition:background-color .12s var(--ease),color .12s var(--ease)}
+    .seg button:hover{color:var(--text)}
+    .seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
+    .seg svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .chip{
+      height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:500;color:var(--text2);
+      font-variant-numeric:tabular-nums;transition:background-color .12s var(--ease),color .12s var(--ease),border-color .12s var(--ease);
+    }
+    .chip:hover{background:var(--hover);color:var(--text)}
+    .chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+    .pop input[type=text]{
+      width:100%;height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--border);
+      background:transparent;color:var(--text);font:500 13px Roboto,Arial,sans-serif;outline:none;
+    }
+    .pop input[type=text]:focus{border-color:var(--accent)}
+    .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .primary{height:28px;padding:0 14px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:600}
+    .ghost{height:28px;padding:0 10px;border-radius:999px;font-size:13px;color:var(--text2)}
+    .ghost:hover{background:var(--hover);color:var(--text)}
+    @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+    @media (prefers-contrast:more){
+      :host{--text2:#d1d1d6;--border:rgba(255,255,255,.4);--track:rgba(255,255,255,.6)}
+      :host([data-theme="light"]){--text2:#3a3a40;--border:rgba(0,0,0,.5);--track:rgba(0,0,0,.65)}
+    }
+  `;
+
+  const ICONS = {
+    modeSlider: '<svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="9" cy="12" r="2.6" fill="currentColor"/></svg>',
+    modeButtons: '<svg viewBox="0 0 24 24"><rect x="2.5" y="8" width="5.5" height="8" rx="2"/><rect x="9.25" y="8" width="5.5" height="8" rx="2"/><rect x="16" y="8" width="5.5" height="8" rx="2"/></svg>',
+    presets: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
+    volume: '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>',
+    loop: '<svg viewBox="0 0 24 24"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 014-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 01-4 4H4"/></svg>',
+    skipSponsors: '<svg viewBox="0 0 24 24"><path d="M5 5l9 7-9 7V5z"/><path d="M19 5v14"/></svg>',
+    blockAds: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
+    hideShorts: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0112 6c5 0 9 6 9 6a17 17 0 01-3.2 3.8M6.6 6.6C4.2 8.2 3 12 3 12s4 6 9 6c1.6 0 3-.4 4.3-1.1"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/></svg>',
+    download: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
+  };
+  const PROFILES = [
+    ["Default", "1, 1.5, 2, 2.5, 3, 5, 10"],
+    ["Casual", "0.75, 1, 1.25, 1.5, 1.75, 2"],
+    ["Study", "1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3"],
+    ["Ultra", "1, 2, 5, 10, 20, 50, 100"],
+  ];
+  // Icon toggles (HIG: outside a list, use a button that behaves like a toggle;
+  // state = filled background + tint, not color alone). Labels live in tooltips/aria.
+  const TOGGLES = [
+    ["loop", "Loop"],
+    ["skipSponsors", "Skip sponsors"],
+    ["blockAds", "Block ads"],
+    ["hideShorts", "Hide Shorts"],
+  ];
+
+  function h(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        const v = attrs[k];
+        if (k === "class") e.className = v;
+        else if (k === "html") e.innerHTML = v; // only ever called with static literals above
+        else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+        else e.setAttribute(k, v);
+      }
+    }
+    for (const c of kids) if (c != null) e.append(c);
+    return e;
   }
-  function toggleSetting(key) {
-    settings[key] = !settings[key];
-    try {
-      chrome.storage.sync.set({ [key]: settings[key] });
-    } catch (_) {}
-    applyAll();
+
+  let barUI = null;
+
+  function paintRange(input) {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    const f = (Number(input.value) - min) / (max - min);
+    // Fill ends at the thumb centre (thumb is 14px → inset 7px each end).
+    input.style.setProperty("--p", "calc(7px + (100% - 14px) * " + f + ")");
+  }
+  const pipLeft = (frac) => "calc(7px + (100% - 14px) * " + frac + ")";
+
+  function createBar() {
+    const host = h("div", { id: "ct-bar" });
+    const root = host.attachShadow({ mode: "open" });
+    root.append(h("style", null, BAR_CSS));
+    // Keep keystrokes inside our controls from triggering YouTube shortcuts.
+    ["keydown", "keyup", "keypress"].forEach((t) => host.addEventListener(t, (e) => e.stopPropagation()));
+
+    const ui = { host, root, chips: [], togs: {} };
+
+    /* speed: editable value + log slider + presets popover */
+    ui.hero = h("input", { class: "val", type: "text", inputmode: "decimal", spellcheck: "false", "aria-label": "Playback speed", title: "Playback speed — type an exact value (0.25–100)" });
+    const commitHero = () => {
+      const n = parseFloat(String(ui.hero.value).replace(/[×x\s]/gi, ""));
+      if (isFinite(n)) setSpeed(clamp(Math.round(n * 100) / 100, SPEED_MIN, SPEED_MAX), true);
+      syncBar();
+    };
+    ui.hero.addEventListener("focus", () => ui.hero.select());
+    ui.hero.addEventListener("change", commitHero);
+    ui.hero.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        ui.hero.blur();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        syncBar();
+        ui.hero.blur();
+      }
+    });
+
+    ui.speed = h("input", { type: "range", min: "0", max: String(SLIDER_STEPS), step: "2", "aria-label": "Playback speed slider" });
+    ui.pips = h("div", { class: "pips", "aria-hidden": "true" });
+    ui.speed.addEventListener("input", () => {
+      const m = magnetize(posToSpeed(Number(ui.speed.value)));
+      if (m.snapped) ui.speed.value = String(speedToPos(m.value)); // thumb "sticks" to the snap point
+      paintRange(ui.speed);
+      ui.hero.value = fmtSpeed(m.value);
+      ui.speed.setAttribute("aria-valuetext", fmtSpeed(m.value));
+      ui.speed.title = fmtSpeed(m.value);
+      markChips(m.value);
+      setSpeed(m.value, false); // live preview, no storage write
+    });
+    ui.speed.addEventListener("change", () => setSpeed(magnetize(posToSpeed(Number(ui.speed.value))).value, true));
+
+    const presetsBtn = h("button", { class: "ib", type: "button", title: "Speed presets", "aria-label": "Speed presets", "aria-haspopup": "dialog", html: ICONS.presets });
+
+    ui.chipRow = h("div", { class: "chips" });
+    ui.inlineRow = h("div", { class: "chips inline", role: "group", "aria-label": "Speed presets" });
+    const pop = h("div", { class: "pop", role: "dialog", "aria-label": "Speed presets" });
+    const popInput = h("input", { type: "text", placeholder: "e.g. 1, 1.5, 2, 3, 5", "aria-label": "Custom presets, comma-separated" });
+    const closePop = () => pop.classList.remove("open");
+    // HIG: a nonmodal popover that closes itself keeps the person's work —
+    // Done, Enter and clicking outside all save. Only Escape discards.
+    const savePop = () => {
+      if (!pop.classList.contains("open")) return;
+      const formatted = parseSpeedPresets(popInput.value).join(", ");
+      if (formatted !== settings.speedPresets) {
+        settings.speedPresets = formatted;
+        persist({ speedPresets: formatted });
+        renderPresets(true);
+        markChips(clamp(Number(settings.speed) || 1, SPEED_MIN, SPEED_MAX));
+      }
+      closePop();
+    };
+    pop.append(
+      ui.chipRow,
+      h("div", { class: "cap" }, "Profiles"),
+      h("div", { class: "chips" }, ...PROFILES.map(([name, val]) => h("button", { class: "chip", type: "button", onclick: () => (popInput.value = val) }, name))),
+      popInput,
+      h(
+        "div",
+        { class: "row" },
+        h("button", { class: "ghost", type: "button", onclick: () => (popInput.value = DEFAULTS.speedPresets) }, "Reset"),
+        h("button", { class: "primary", type: "button", onclick: savePop }, "Done")
+      )
+    );
+    popInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        savePop();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closePop();
+      }
+    });
+    presetsBtn.addEventListener("click", () => {
+      if (pop.classList.contains("open")) return savePop();
+      popInput.value = settings.speedPresets || DEFAULTS.speedPresets;
+      pop.classList.add("open");
+      presetsBtn.setAttribute("aria-expanded", "true");
+    });
+    ui.closePop = () => {
+      savePop();
+      presetsBtn.setAttribute("aria-expanded", "false");
+    };
+    ui.pop = pop;
+    ui.editBtn = presetsBtn;
+
+    // Switch between the slider and inline preset buttons (remembered across videos).
+    ui.sliderWrap = h("div", { class: "slider" }, ui.speed, ui.pips);
+    ui.modeBtns = {
+      slider: h("button", { type: "button", title: "Speed slider", "aria-label": "Speed slider", html: ICONS.modeSlider }),
+      buttons: h("button", { type: "button", title: "Speed buttons", "aria-label": "Speed buttons", html: ICONS.modeButtons }),
+    };
+    for (const mode of Object.keys(ui.modeBtns)) {
+      ui.modeBtns[mode].addEventListener("click", () => {
+        if (settings.speedMode === mode) return;
+        settings.speedMode = mode;
+        persist({ speedMode: mode });
+        syncMode();
+      });
+    }
+    const seg = h("div", { class: "seg", role: "group", "aria-label": "Speed control style" }, ui.modeBtns.slider, ui.modeBtns.buttons);
+
+    const speedGrp = h("div", { class: "grp speed" }, ui.hero, ui.sliderWrap, ui.inlineRow, seg, presetsBtn, pop);
+
+    /* volume */
+    ui.volVal = h("span", { class: "num" }, "100%");
+    ui.vol = h("input", { type: "range", min: "100", max: "500", step: "10", "aria-label": "Volume boost" });
+    ui.vol.addEventListener("input", () => {
+      ui.volVal.textContent = ui.vol.value + "%";
+      ui.vol.title = ui.vol.value + "%";
+      paintRange(ui.vol);
+      setVolumeBoost(Number(ui.vol.value), false);
+    });
+    ui.vol.addEventListener("change", () => setVolumeBoost(Number(ui.vol.value), true));
+    const volGrp = h("div", { class: "grp vol", title: "Volume boost (100–500%)" }, h("span", { class: "glyph", html: ICONS.volume }), h("div", { class: "slider" }, ui.vol), ui.volVal);
+
+    /* toggles + download */
+    const end = h("div", { class: "end" });
+    for (const [key, label] of TOGGLES) {
+      const b = h("button", { class: "ib", type: "button", "aria-pressed": "false", "aria-label": label, html: ICONS[key] });
+      b.addEventListener("click", () => {
+        settings[key] = !settings[key];
+        persist({ [key]: settings[key] });
+        syncToggle(b, key, label);
+        queueApply();
+      });
+      ui.togs[key] = [b, label];
+      end.append(b);
+    }
+    const dlBtn = h("button", { class: "ib", type: "button", title: "Download (choose quality)", "aria-label": "Download", html: ICONS.download });
+    dlBtn.addEventListener("click", () => {
+      try {
+        chrome.runtime.sendMessage({ type: "OPEN_DOWNLOAD" });
+      } catch (_) {}
+    });
+    end.append(h("span", { class: "sep" }), dlBtn);
+
+    root.append(
+      h(
+        "div",
+        { class: "bar" },
+        h("div", { class: "brand" }, h("i"), "ClearTube"),
+        h("span", { class: "sep" }),
+        speedGrp,
+        h("span", { class: "sep" }),
+        volGrp,
+        end
+      )
+    );
+    return ui;
+  }
+
+  function syncToggle(b, key, label) {
+    const on = !!settings[key];
+    b.setAttribute("aria-pressed", String(on));
+    b.title = label + (on ? ": on" : ": off");
+  }
+
+  function syncMode() {
+    const ui = barUI;
+    if (!ui) return;
+    const buttons = settings.speedMode === "buttons";
+    ui.sliderWrap.hidden = buttons;
+    ui.inlineRow.hidden = !buttons;
+    ui.modeBtns.slider.setAttribute("aria-pressed", String(!buttons));
+    ui.modeBtns.buttons.setAttribute("aria-pressed", String(buttons));
+  }
+
+  function markChips(val) {
+    if (!barUI) return;
+    for (const c of barUI.chips) c.setAttribute("aria-pressed", String(Math.abs(Number(c.dataset.v) - val) < 0.01));
+  }
+
+  let presetKey = null;
+  function renderPresets(force) {
+    const ui = barUI;
+    const key = String(settings.speedPresets || "");
+    if (!ui || (!force && key === presetKey)) return;
+    presetKey = key;
+    ui.chipRow.textContent = "";
+    ui.inlineRow.textContent = "";
+    ui.pips.textContent = "";
+    ui.chips = [];
+    for (const p of parseSpeedPresets(key)) {
+      for (const row of [ui.inlineRow, ui.chipRow]) {
+        const chip = h("button", { class: "chip", type: "button", "data-v": String(p), "aria-pressed": "false" }, fmtSpeed(p));
+        chip.addEventListener("click", () => {
+          ui.speed.value = String(speedToPos(p));
+          paintRange(ui.speed);
+          ui.hero.value = fmtSpeed(p);
+          markChips(p);
+          setSpeed(p, true);
+        });
+        ui.chips.push(chip);
+        row.append(chip);
+      }
+      const pip = h("span", { class: "pip" });
+      pip.style.left = pipLeft(speedToPos(p) / SLIDER_STEPS);
+      ui.pips.append(pip);
+    }
+  }
+
+  // Update the existing bar in place from `settings` — never rebuild it.
+  function syncBar() {
+    const ui = barUI;
+    if (!ui) return;
+    const cur = clamp(Number(settings.speed) || 1, SPEED_MIN, SPEED_MAX);
+    if (ui.root.activeElement !== ui.hero) ui.hero.value = fmtSpeed(cur); // don't clobber typing
+    ui.speed.value = String(speedToPos(cur));
+    ui.speed.title = fmtSpeed(cur);
+    ui.speed.setAttribute("aria-valuetext", fmtSpeed(cur));
+    paintRange(ui.speed);
+    renderPresets(false);
+    syncMode();
+    markChips(cur);
+    const vol = clamp(Number(settings.volumeBoost) || 100, 100, 500);
+    ui.vol.value = String(vol);
+    ui.volVal.textContent = vol + "%";
+    paintRange(ui.vol);
+    for (const key of Object.keys(ui.togs)) syncToggle(ui.togs[key][0], key, ui.togs[key][1]);
+    const theme = document.documentElement.hasAttribute("dark") ? "dark" : "light";
+    if (ui.host.getAttribute("data-theme") !== theme) ui.host.setAttribute("data-theme", theme);
+  }
+
+  function mountTarget() {
+    const below = document.querySelector("ytd-watch-flexy #below, ytd-watch-grid #below, #below");
+    if (below && below.parentElement) return { parent: below.parentElement, before: below };
+    const meta = document.querySelector("ytd-watch-metadata");
+    if (meta && meta.parentElement) return { parent: meta.parentElement, before: meta };
+    return null;
+  }
+
+  function ensureBar() {
+    if (location.pathname !== "/watch" || !currentVideoId()) return removeBar();
+    if (!barUI) {
+      barUI = createBar();
+      presetKey = null;
+      renderPresets(true);
+      syncBar();
+    }
+    const host = barUI.host;
+    const target = mountTarget();
+    if (!target) return;
+    // Re-attach only if YouTube dropped it or moved it — never on every tick.
+    if (!host.isConnected || host.parentElement !== target.parent) {
+      target.parent.insertBefore(host, target.before);
+    }
   }
   function removeBar() {
-    const b = document.getElementById("ct-bar");
-    if (b) b.remove();
-  }
-  function buildBar() {
-    if (location.pathname !== "/watch" || !currentVideoId()) {
-      removeBar();
-      return;
-    }
-    let bar = document.getElementById("ct-bar");
-    if (!bar) {
-      const mount =
-        document.querySelector("#below") ||
-        document.querySelector("ytd-watch-metadata");
-      if (!mount) return;
-      bar = document.createElement("div");
-      bar.id = "ct-bar";
-      bar.style.cssText =
-        "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;padding:10px 12px;" +
-        "border:1px solid var(--yt-spec-10-percent-layer, rgba(128,128,128,0.2));border-radius:12px;" +
-        "background:var(--yt-spec-badge-chip-background, rgba(128,128,128,0.08));position:relative;z-index:999;";
-      mount.prepend(bar);
-    }
-    updateBar();
-  }
-  function updateBar() {
-    const bar = document.getElementById("ct-bar");
-    if (!bar) return;
-    bar.textContent = "";
-
-    const brand = document.createElement("span");
-    brand.textContent = "ClearTube";
-    brand.style.cssText = "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;";
-    bar.appendChild(brand);
-
-    const spLabel = document.createElement("span");
-    spLabel.textContent = "Speed";
-    spLabel.style.cssText =
-      "font:600 12px Roboto,system-ui,sans-serif;color:var(--yt-spec-text-secondary,#aaa);margin-left:6px;";
-    bar.appendChild(spLabel);
-
-    ensureSpeedSliderStyle();
-    const cur = Math.max(SPEED_MIN, Math.min(getSpeedMax(), Number(settings.speed) || 1));
-
-    const sliderCol = document.createElement("span");
-    sliderCol.style.cssText = "display:inline-flex;flex-direction:column;gap:1px;position:relative;";
-
-    const sliderRow = document.createElement("span");
-    sliderRow.style.cssText = "display:inline-flex;align-items:center;gap:8px;";
-
-    const valueLabel = document.createElement("span");
-    valueLabel.textContent = fmtSpeed(cur);
-    valueLabel.style.cssText =
-      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:44px;";
-
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.id = "ct-speed-slider";
-    slider.min = "0";
-    slider.max = String(SLIDER_STEPS);
-    slider.step = "1";
-    slider.value = String(speedToPos(cur));
-    slider.title = "Drag to set playback speed";
-
-    const customPresets = parseSpeedPresets(settings.speedPresets);
-
-    const btnRow = document.createElement("div");
-    btnRow.id = "ct-speed-btn-row";
-
-    function highlightActivePill(val) {
-      btnRow.querySelectorAll(".ct-speed-pill").forEach((pill) => {
-        const s = Number(pill.dataset.speed);
-        if (Math.abs(s - val) < 0.01) {
-          pill.classList.add("active");
-        } else {
-          pill.classList.remove("active");
-        }
-      });
-    }
-
-    slider.addEventListener("input", () => {
-      const raw = posToSpeed(Number(slider.value));
-      const snapped = magnetize(raw);
-      const snappedPos = speedToPos(snapped);
-      // Only visually "stick" the thumb when it's genuinely close to a tick —
-      // otherwise free dragging would feel jumpy.
-      if (Math.abs(snappedPos - Number(slider.value)) <= 15) {
-        slider.value = String(snappedPos);
-      }
-      valueLabel.textContent = fmtSpeed(snapped);
-      setSpeed(snapped, false); // live preview, no storage write yet
-      highlightActivePill(snapped);
-    });
-    slider.addEventListener("change", () => {
-      const snapped = magnetize(posToSpeed(Number(slider.value)));
-      setSpeed(snapped, true);
-      highlightActivePill(snapped);
-    });
-
-    // Inline Edit Button on the slider itself
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.id = "ct-speed-edit-btn";
-    editBtn.innerHTML = "⚙ Edit";
-    editBtn.title = "Configure speed presets & custom values";
-
-    sliderRow.appendChild(slider);
-    sliderRow.appendChild(valueLabel);
-    sliderRow.appendChild(editBtn);
-
-    // Track pips indicating exact magnetic snap points
-    const trackPips = document.createElement("div");
-    trackPips.id = "ct-speed-pips";
-
-    customPresets.forEach((p) => {
-      const x = (speedToPos(p) / SLIDER_STEPS) * SPEED_TRACK_WIDTH;
-      const pip = document.createElement("span");
-      pip.className = "ct-speed-pip";
-      pip.style.left = Math.min(SPEED_TRACK_WIDTH - 2, Math.max(1, x)) + "px";
-      trackPips.appendChild(pip);
-
-      // Clean clickable pill button with even spacing
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ct-speed-pill" + (Math.abs(cur - p) < 0.01 ? " active" : "");
-      btn.dataset.speed = String(p);
-      btn.textContent = (p < 1 ? p : (Math.abs(p - Math.round(p)) < 0.01 ? Math.round(p) : p)) + "×";
-      btn.title = "Set speed to " + p + "×";
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        slider.value = String(speedToPos(p));
-        valueLabel.textContent = fmtSpeed(p);
-        setSpeed(p, true);
-        highlightActivePill(p);
-      });
-      btnRow.appendChild(btn);
-    });
-
-    sliderCol.appendChild(sliderRow);
-    sliderCol.appendChild(trackPips);
-    sliderCol.appendChild(btnRow);
-    bar.appendChild(sliderCol);
-
-    // Interactive Popover for choosing each value and writing custom ones
-    let popover = null;
-    let onDocClick = null;
-
-    function closePopover() {
-      if (popover) {
-        popover.remove();
-        popover = null;
-        editBtn.classList.remove("active");
-        if (onDocClick) {
-          document.removeEventListener("pointerdown", onDocClick);
-          onDocClick = null;
-        }
-      }
-    }
-
-    function togglePopover() {
-      if (popover) {
-        closePopover();
-        return;
-      }
-
-      editBtn.classList.add("active");
-      popover = document.createElement("div");
-      popover.id = "ct-speed-popover";
-
-      // Prevent events inside popover from bubbling or triggering YouTube shortcuts
-      popover.addEventListener("click", (e) => e.stopPropagation());
-      popover.addEventListener("keydown", (e) => e.stopPropagation());
-      popover.addEventListener("keyup", (e) => e.stopPropagation());
-      popover.addEventListener("keypress", (e) => e.stopPropagation());
-
-      // Header
-      const head = document.createElement("div");
-      head.className = "ct-pop-head";
-      head.innerHTML =
-        '<div class="ct-pop-title">Speed Presets <span class="ct-pop-tag">Custom</span></div>' +
-        '<button type="button" class="ct-pop-close" title="Close">✕</button>';
-      head.querySelector(".ct-pop-close").addEventListener("click", closePopover);
-      popover.appendChild(head);
-
-      // Section 1: Quick Profiles
-      const packTitle = document.createElement("div");
-      packTitle.className = "ct-pop-sec-title";
-      packTitle.textContent = "Quick Profiles:";
-      popover.appendChild(packTitle);
-
-      const packsContainer = document.createElement("div");
-      packsContainer.className = "ct-pop-packs";
-
-      const PACKS = [
-        { name: "Default (1–10×)", val: "1, 1.5, 2, 2.5, 3, 5, 10" },
-        { name: "Casual (0.75–2×)", val: "0.75, 1, 1.25, 1.5, 1.75, 2" },
-        { name: "Fine (0.25 steps)", val: "0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5" },
-        { name: "Study (1–3×)", val: "1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3" },
-        { name: "Ultra (up to 100×)", val: "1, 2, 5, 10, 20, 50, 100" }
-      ];
-
-      // Section 2: Choose Each Value (Chips Grid)
-      const chipTitle = document.createElement("div");
-      chipTitle.className = "ct-pop-sec-title";
-      chipTitle.textContent = "Choose Values (click to toggle):";
-
-      const chipsGrid = document.createElement("div");
-      chipsGrid.className = "ct-pop-chips-grid";
-
-      const SPEED_CHOICES = [
-        0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 4, 5, 6, 8, 10, 12, 16, 20, 50, 100
-      ];
-
-      // Section 3: Custom Text Input
-      const inputTitle = document.createElement("div");
-      inputTitle.className = "ct-pop-sec-title";
-      inputTitle.textContent = "Custom speeds (comma-separated):";
-
-      const inputRow = document.createElement("div");
-      inputRow.className = "ct-pop-input-row";
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "ct-pop-input";
-      input.placeholder = "e.g. 1, 1.5, 2, 2.5, 3.5, 5, 10";
-      input.value = settings.speedPresets || "1, 1.5, 2, 2.5, 3, 5, 10";
-      inputRow.appendChild(input);
-
-      function syncChipsFromInput() {
-        const currentVals = parseSpeedPresets(input.value);
-        chipsGrid.querySelectorAll(".ct-pop-chip").forEach((chip) => {
-          const val = Number(chip.dataset.val);
-          if (currentVals.includes(val)) {
-            chip.classList.add("active");
-          } else {
-            chip.classList.remove("active");
-          }
-        });
-      }
-
-      SPEED_CHOICES.forEach((spd) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "ct-pop-chip";
-        chip.dataset.val = String(spd);
-        chip.textContent = spd + "×";
-        chip.addEventListener("click", () => {
-          let list = parseSpeedPresets(input.value);
-          if (list.includes(spd)) {
-            if (list.length > 1) {
-              list = list.filter((x) => x !== spd);
-            }
-          } else {
-            list.push(spd);
-          }
-          list.sort((a, b) => a - b);
-          input.value = list.join(", ");
-          syncChipsFromInput();
-        });
-        chipsGrid.appendChild(chip);
-      });
-
-      PACKS.forEach((p) => {
-        const pBtn = document.createElement("button");
-        pBtn.type = "button";
-        pBtn.className = "ct-pop-pack-btn";
-        pBtn.textContent = p.name;
-        pBtn.addEventListener("click", () => {
-          input.value = p.val;
-          syncChipsFromInput();
-        });
-        packsContainer.appendChild(pBtn);
-      });
-
-      input.addEventListener("input", syncChipsFromInput);
-
-      // Section 4: Actions
-      const actions = document.createElement("div");
-      actions.className = "ct-pop-actions";
-
-      const resetBtn = document.createElement("button");
-      resetBtn.type = "button";
-      resetBtn.className = "ct-pop-reset-btn";
-      resetBtn.textContent = "Reset Default";
-      resetBtn.addEventListener("click", () => {
-        input.value = "1, 1.5, 2, 2.5, 3, 5, 10";
-        syncChipsFromInput();
-      });
-
-      const savedMsg = document.createElement("span");
-      savedMsg.className = "ct-pop-saved-msg";
-      savedMsg.textContent = "✓ Applied!";
-
-      const saveBtn = document.createElement("button");
-      saveBtn.type = "button";
-      saveBtn.className = "ct-pop-save-btn";
-      saveBtn.textContent = "Save & Apply";
-
-      function doSave() {
-        const parsed = parseSpeedPresets(input.value);
-        const formatted = parsed.join(", ");
-        settings.speedPresets = formatted;
-        try {
-          chrome.storage.sync.set({ speedPresets: formatted });
-        } catch (_) {}
-        savedMsg.style.display = "inline";
-        setTimeout(() => {
-          closePopover();
-          updateBar();
-          applySpeed();
-        }, 250);
-      }
-
-      saveBtn.addEventListener("click", doSave);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          doSave();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          closePopover();
-        }
-      });
-
-      actions.appendChild(resetBtn);
-      actions.appendChild(savedMsg);
-      actions.appendChild(saveBtn);
-
-      popover.appendChild(packsContainer);
-      popover.appendChild(chipTitle);
-      popover.appendChild(chipsGrid);
-      popover.appendChild(inputTitle);
-      popover.appendChild(inputRow);
-      popover.appendChild(actions);
-
-      sliderCol.appendChild(popover);
-      syncChipsFromInput();
-      setTimeout(() => input.focus(), 50);
-
-      onDocClick = (e) => {
-        if (popover && !popover.contains(e.target) && e.target !== editBtn) {
-          closePopover();
-        }
-      };
-      document.addEventListener("pointerdown", onDocClick);
-    }
-
-    editBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      togglePopover();
-    });
-
-    const divider = document.createElement("span");
-    divider.style.cssText =
-      "width:1px;height:20px;background:rgba(128,128,128,0.35);margin:0 4px;";
-    bar.appendChild(divider);
-
-    const volLabel = document.createElement("span");
-    volLabel.textContent = "Volume";
-    volLabel.style.cssText =
-      "font:600 12px Roboto,system-ui,sans-serif;color:var(--yt-spec-text-secondary,#aaa);";
-    bar.appendChild(volLabel);
-
-    const curVol = Math.max(100, Math.min(500, Number(settings.volumeBoost) || 100));
-    const volValueLabel = document.createElement("span");
-    volValueLabel.textContent = curVol + "%";
-    volValueLabel.style.cssText =
-      "font:700 12px Roboto,system-ui,sans-serif;color:#ff5277;min-width:38px;";
-
-    const volSlider = document.createElement("input");
-    volSlider.type = "range";
-    volSlider.id = "ct-vol-slider";
-    volSlider.min = "100";
-    volSlider.max = "500";
-    volSlider.step = "10";
-    volSlider.value = String(curVol);
-    volSlider.title = "Volume boost (100%–500%)";
-    volSlider.addEventListener("input", () => {
-      const v = Number(volSlider.value);
-      volValueLabel.textContent = v + "%";
-      setVolumeBoost(v, false);
-    });
-    volSlider.addEventListener("change", () => {
-      setVolumeBoost(Number(volSlider.value), true);
-    });
-    bar.appendChild(volSlider);
-    bar.appendChild(volValueLabel);
-
-    const divider2 = document.createElement("span");
-    divider2.style.cssText =
-      "width:1px;height:20px;background:rgba(128,128,128,0.35);margin:0 4px;";
-    bar.appendChild(divider2);
-
-    bar.appendChild(barBtn("Loop", !!settings.loop, () => toggleSetting("loop")));
-    bar.appendChild(barBtn("Skip sponsors", !!settings.skipSponsors, () => toggleSetting("skipSponsors")));
-    bar.appendChild(barBtn("Block ads", !!settings.blockAds, () => toggleSetting("blockAds")));
-    bar.appendChild(barBtn("Hide Shorts", !!settings.hideShorts, () => toggleSetting("hideShorts")));
-
-    bar.appendChild(
-      barBtn("⤓ Download", false, () => {
-        const vid = currentVideoId();
-        if (!vid) return;
-        try {
-          navigator.clipboard.writeText("https://www.youtube.com/watch?v=" + vid);
-        } catch (_) {}
-        window.open("https://ytmp3.ws/nie/", "_blank");
-      }, "Copy link & open downloader")
-    );
-  }
-
-  /* ---------- AMBIENT GLOW (dynamic video color behind/around player) ---------- */
-  const AMBIENT_STYLE_ID = "ct-ambient-style";
-  const AMBIENT_CSS = `
-    /* Eliminate section lines and borders in theater mode for 1 seamless backdrop */
-    ytd-watch-flexy[theater] #masthead-container,
-    ytd-watch-grid[theater] #masthead-container,
-    ytd-watch-flexy[theater] #masthead,
-    ytd-watch-grid[theater] #masthead,
-    ytd-watch-flexy[theater] #player-theater-container,
-    ytd-watch-grid[theater] #player-theater-container,
-    ytd-watch-flexy[theater] #full-bleed-container,
-    ytd-watch-flexy[theater] #player-container-outer,
-    ytd-watch-flexy[theater] #player-container,
-    ytd-watch-flexy[theater] #below,
-    ytd-watch-flexy[theater] #primary,
-    ytd-watch-flexy[theater] #secondary,
-    ytd-watch-flexy[theater] #columns {
-      border: none !important;
-      border-top: none !important;
-      border-bottom: none !important;
-      border-left: none !important;
-      border-right: none !important;
-      box-shadow: none !important;
-      outline: none !important;
-    }
-
-    ytd-watch-flexy[theater] #player-theater-container,
-    ytd-watch-flexy[theater] #full-bleed-container,
-    ytd-watch-grid[theater] #player-theater-container {
-      background: #09090b !important;
-      overflow: visible !important;
-    }
-
-    /* Video player crisp modern border & subtle rounding in theater mode */
-    ytd-watch-flexy[theater] #movie_player,
-    ytd-watch-grid[theater] #movie_player {
-      border-radius: 14px !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.22) !important;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
-      overflow: hidden !important;
-      position: relative !important;
-      z-index: 2 !important;
-      transition: border-color 0.35s ease, box-shadow 0.35s ease !important;
-    }
-    ytd-watch-flexy[theater] #movie_player video.html5-main-video,
-    ytd-watch-grid[theater] #movie_player video.html5-main-video {
-      border-radius: 12px !important;
-    }
-
-    /* Ambient glow halo behind the player */
-    #ct-ambient-glow {
-      position: absolute;
-      inset: -50px -70px;
-      z-index: 1;
-      pointer-events: none;
-      border-radius: 36px;
-      filter: blur(75px);
-      opacity: 0.85;
-      transition: background 0.4s ease, box-shadow 0.4s ease, opacity 0.4s ease;
-    }
-
-    #full-bleed-container,
-    #player-theater-container,
-    #player-container-outer,
-    #player-container-inner,
-    ytd-watch-flexy[theater] #player-container,
-    ytd-watch-grid[theater] #player-container {
-      overflow: visible !important;
-    }
-  `;
-  let ambientRaf = null;
-  let ambientCanvas = null;
-  let ambientCtx = null;
-  let ambientLastSample = 0;
-  let ambientActive = false;
-  const ambientReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-  function isTheaterMode() {
-    if (location.pathname !== "/watch") return false;
-    const flexy = document.querySelector("ytd-watch-flexy, ytd-watch-grid");
-    if (flexy) {
-      if (flexy.hasAttribute("theater") || flexy.hasAttribute("theater-requested_")) {
-        return !flexy.hasAttribute("fullscreen");
-      }
-    }
-    const tc = document.getElementById("player-theater-container");
-    if (tc && tc.offsetHeight > 100) return true;
-    const player = document.getElementById("movie_player");
-    if (player && player.classList.contains("ytp-big-mode") && !document.fullscreenElement) {
-      return true;
-    }
-    return false;
-  }
-
-  function ensureAmbientStyle() {
-    if (document.getElementById(AMBIENT_STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = AMBIENT_STYLE_ID;
-    s.textContent = AMBIENT_CSS;
-    (document.head || document.documentElement).appendChild(s);
-  }
-
-  function startAmbientGlow() {
-    if (ambientActive) return;
-    ambientActive = true;
-    ensureAmbientStyle();
-    if (!ambientCanvas) {
-      ambientCanvas = document.createElement("canvas");
-      ambientCanvas.width = 16;
-      ambientCanvas.height = 9;
-      ambientCtx = ambientCanvas.getContext("2d", { willReadFrequently: true });
-    }
-    ensureGlowElement();
-    ambientLastSample = 0;
-    ambientRaf = requestAnimationFrame(ambientFrame);
-  }
-
-  function ensureGlowElement() {
-    const player = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
-    if (!player || !player.parentElement) return null;
-
-    let glow = document.getElementById("ct-ambient-glow");
-    if (!glow) {
-      glow = document.createElement("div");
-      glow.id = "ct-ambient-glow";
-      player.parentElement.style.position = "relative";
-      player.parentElement.style.overflow = "visible";
-      player.parentElement.insertBefore(glow, player);
-    }
-    return glow;
-  }
-
-  function stopAmbientGlow() {
-    if (!ambientActive) return;
-    ambientActive = false;
-    if (ambientRaf) {
-      cancelAnimationFrame(ambientRaf);
-      ambientRaf = null;
-    }
-    const glow = document.getElementById("ct-ambient-glow");
-    if (glow) glow.remove();
-    const player = document.getElementById("movie_player");
-    if (player) {
-      player.style.boxShadow = "";
-      player.style.borderColor = "";
+    if (barUI) {
+      try {
+        barUI.host.remove();
+      } catch (_) {}
     }
   }
 
-  function ambientFrame(ts) {
-    if (!ambientActive) return;
-    // Sample every ~120ms for smooth 8-9fps color transitions with zero frame drops
-    if (ts - ambientLastSample >= 120) {
-      ambientLastSample = ts;
-      const v = document.querySelector("video");
-      const player = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
-      const glow = ensureGlowElement();
+  // Close the presets editor when clicking anywhere outside it.
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!barUI || !barUI.pop.classList.contains("open")) return;
+      const path = e.composedPath();
+      if (!path.includes(barUI.pop) && !path.includes(barUI.editBtn)) barUI.closePop();
+    },
+    true
+  );
 
-      if (v && v.readyState >= 2 && !v.paused && v.videoWidth > 0) {
-        try {
-          ambientCtx.drawImage(v, 0, 0, 16, 9);
-          const imgData = ambientCtx.getImageData(0, 0, 16, 9).data;
-          let rTotal = 0, gTotal = 0, bTotal = 0, count = 0;
-          for (let i = 0; i < imgData.length; i += 4) {
-            rTotal += imgData[i];
-            gTotal += imgData[i + 1];
-            bTotal += imgData[i + 2];
-            count++;
-          }
-          let r = Math.round(rTotal / count);
-          let g = Math.round(gTotal / count);
-          let b = Math.round(bTotal / count);
-
-          // Boost color vibrancy so the ambient light is vivid
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          if (max > min && max > 20) {
-            const boost = 1.35;
-            r = Math.min(255, Math.round(r * boost));
-            g = Math.min(255, Math.round(g * boost));
-            b = Math.min(255, Math.round(b * boost));
-          }
-
-          const shadow =
-            "0 0 100px 40px rgba(" + r + "," + g + "," + b + ",0.50), " +
-            "0 0 200px 90px rgba(" + r + "," + g + "," + b + ",0.25)";
-
-          if (glow) {
-            glow.style.background = "radial-gradient(ellipse at center, rgba(" + r + "," + g + "," + b + ",0.70) 0%, rgba(" + r + "," + g + "," + b + ",0.25) 50%, transparent 85%)";
-            glow.style.boxShadow = shadow;
-          }
-          if (player) {
-            player.style.boxShadow = "0 16px 48px rgba(0,0,0,0.9), 0 0 50px 15px rgba(" + r + "," + g + "," + b + ",0.40)";
-            player.style.borderColor = "rgba(" + Math.min(255, r + 40) + "," + Math.min(255, g + 40) + "," + Math.min(255, b + 40) + ",0.35)";
-          }
-        } catch (_) {
-          // Keep loop alive across transient canvas read issues
-        }
-      }
-    }
-    ambientRaf = requestAnimationFrame(ambientFrame);
-  }
-
-  function checkAmbientConditions() {
-    const isWatch = location.pathname === "/watch";
-    const v = document.querySelector("video");
-    const playing = v && !v.paused && !v.ended;
-    const shouldRun =
-      settings.ambientGlow &&
-      isWatch &&
-      !document.hidden &&
-      playing;
-
-    if (shouldRun) {
-      startAmbientGlow();
-    } else {
-      stopAmbientGlow();
-    }
-  }
-
-  /* ---------- AUTO-FADE UI (hide page chrome on idle in theater mode) ---------- */
-  const FADE_STYLE_ID = "ct-fade-style";
-  const FADE_CSS = `
-    body.clearline-idle {
-      overflow: hidden !important;
-    }
-    body.clearline-idle::-webkit-scrollbar,
-    body.clearline-idle *::-webkit-scrollbar {
-      display: none !important;
-      width: 0 !important;
-    }
-    body.clearline-idle #below,
-    body.clearline-idle #ct-bar,
-    body.clearline-idle #secondary,
-    body.clearline-idle #related,
-    body.clearline-idle #comments,
-    body.clearline-idle ytd-watch-metadata,
-    body.clearline-idle #masthead-container,
-    body.clearline-idle #chat,
-    body.clearline-idle #ticket-shelf {
-      opacity: 0 !important;
-      pointer-events: none !important;
-      visibility: hidden !important;
-      transition: opacity 0.45s ease, visibility 0.45s ease !important;
-    }
-    #below,
-    #ct-bar,
-    #secondary,
-    #related,
-    #comments,
-    ytd-watch-metadata,
-    #masthead-container,
-    #chat {
-      transition: opacity 0.35s ease, visibility 0.35s ease;
-    }
-  `;
-  const IDLE_TIMEOUT = 2500;
-  let fadeActive = false;
-  let fadeTimer = null;
-
-  function ensureFadeStyle() {
-    if (document.getElementById(FADE_STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = FADE_STYLE_ID;
-    s.textContent = FADE_CSS;
-    (document.head || document.documentElement).appendChild(s);
-  }
-
-  function setIdle(on) {
-    document.body.classList.toggle("clearline-idle", on);
-  }
-
-  function resetIdleTimer() {
-    setIdle(false);
-    clearTimeout(fadeTimer);
-    const v = document.querySelector("video");
-    if (fadeActive && v && !v.paused && !v.ended) {
-      fadeTimer = setTimeout(() => {
-        if (document.getElementById("ct-speed-popover")) {
-          resetIdleTimer();
-          return;
-        }
-        const curV = document.querySelector("video");
-        if (fadeActive && curV && !curV.paused) {
-          setIdle(true);
-        }
-      }, IDLE_TIMEOUT);
-    }
-  }
-
-  function onFadeActivity() {
-    if (fadeActive) resetIdleTimer();
-  }
-
-  function startAutoFade() {
-    if (fadeActive) return;
-    fadeActive = true;
-    ensureFadeStyle();
-    window.addEventListener("mousemove", onFadeActivity, { capture: true, passive: true });
-    window.addEventListener("mousedown", onFadeActivity, { capture: true, passive: true });
-    window.addEventListener("keydown", onFadeActivity, { capture: true, passive: true });
-    window.addEventListener("wheel", onFadeActivity, { capture: true, passive: true });
-    window.addEventListener("touchstart", onFadeActivity, { capture: true, passive: true });
-    resetIdleTimer();
-  }
-
-  function stopAutoFade() {
-    if (!fadeActive) return;
-    fadeActive = false;
-    clearTimeout(fadeTimer);
-    fadeTimer = null;
-    setIdle(false);
-    window.removeEventListener("mousemove", onFadeActivity, { capture: true });
-    window.removeEventListener("mousedown", onFadeActivity, { capture: true });
-    window.removeEventListener("keydown", onFadeActivity, { capture: true });
-    window.removeEventListener("wheel", onFadeActivity, { capture: true });
-    window.removeEventListener("touchstart", onFadeActivity, { capture: true });
-  }
-
-  function checkAutoFadeConditions() {
-    const v = document.querySelector("video");
-    const playing = v && !v.paused && !v.ended;
-    const shouldRun =
-      settings.autoFadeUI &&
-      isTheaterMode() &&
-      !document.hidden &&
-      playing;
-
-    if (shouldRun) {
-      startAutoFade();
-    } else {
-      stopAutoFade();
-    }
+  /* ---------- orchestration ---------- */
+  let applyQueued = false;
+  function queueApply() {
+    if (applyQueued) return;
+    applyQueued = true;
+    setTimeout(() => {
+      applyQueued = false;
+      if (alive()) applyAll();
+    }, 60);
   }
 
   function applyAll() {
     setShortsHidden(settings.hideShorts);
-    applySpeed();
-    buildBar();
+    setAdStyle(settings.blockAds);
     maybeRedirectShorts();
+    ensureBar();
+    syncBar();
     watchVideo();
     applyLoop();
+    applySpeed(true);
+    applyBoost();
     maybeLoadSegments();
     renderSegmentBar();
-    applyBoost();
     loadDislikes();
-    setAdStyle(settings.blockAds);
     handleAds();
-    checkAmbientConditions();
-    checkAutoFadeConditions();
+  }
+
+  let heartbeat = null;
+  function shutdown() {
+    clearInterval(heartbeat);
+    clearTimeout(adTimer);
+    stopTurbo();
+    removeBar();
+    removeSegmentBar();
+  }
+  function tick() {
+    if (!alive()) return shutdown();
+    if (document.hidden) return;
+    try {
+      ensureBar();
+      watchVideo();
+      applySpeed(false);
+      maybeLoadSegments();
+      renderSegmentBar();
+      loadDislikes();
+      if (barUI) {
+        const theme = document.documentElement.hasAttribute("dark") ? "dark" : "light";
+        if (barUI.host.getAttribute("data-theme") !== theme) barUI.host.setAttribute("data-theme", theme);
+      }
+    } catch (_) {}
   }
 
   try {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
-      for (const k of Object.keys(changes)) settings[k] = changes[k].newValue;
-      // Force a re-fetch of sponsor segments / dislikes when toggles change.
-      sbVideoId = null;
-      dislikeVid = null;
-      applyAll();
+      let changed = false;
+      for (const k of Object.keys(changes)) {
+        const nv = changes[k].newValue;
+        if (settings[k] === nv) continue; // our own commit echoing back — nothing to do
+        settings[k] = nv;
+        changed = true;
+        if (k === "skipSponsors") sbVideoId = null;
+        if (k === "showDislikes") dislikeVid = null;
+      }
+      if (changed) queueApply();
     });
   } catch (_) {}
 
-  window.addEventListener("yt-navigate-finish", applyAll, true);
-  window.addEventListener("yt-page-data-updated", applyAll, true);
-  document.addEventListener("yt-navigate-finish", applyAll, true);
-
-  const mo = new MutationObserver(() => {
-    watchVideo();
-    applyLoop();
-    applyBoost();
-    applySpeed();
-    // Re-inject the control bar if YouTube rebuilt the page.
-    if (location.pathname === "/watch" && !document.getElementById("ct-bar")) {
-      buildBar();
-    }
-    // Re-inject the segment bar if YouTube rebuilt the progress bar.
-    if (
-      settings.skipSponsors &&
-      sbSegments.length &&
-      !document.getElementById("ytls-segbar")
-    ) {
-      renderSegmentBar();
-    }
-    // Re-inject dislikes if YouTube rebuilt the action bar.
-    if (settings.showDislikes && lastDislikes != null) {
-      injectDislikes();
-    }
-    // Re-evaluate theater-mode dependent features (ambient glow, auto-fade)
-    // when YouTube's DOM changes (e.g. theater attribute toggled).
-    checkAmbientConditions();
-    checkAutoFadeConditions();
-  });
+  // YouTube fires several events per navigation — coalesce them into one pass.
+  ["yt-navigate-finish", "yt-page-data-updated"].forEach((t) => window.addEventListener(t, queueApply, true));
 
   function boot() {
+    // Remove any bar left by a previous (reloaded) instance of this script.
+    document.querySelectorAll("#ct-bar").forEach((n) => n.remove());
     injectPageScript();
     try {
       chrome.storage.local.get({ sbTimeSaved: 0 }, (r) => {
         sbTimeSaved = r.sbTimeSaved || 0;
       });
     } catch (_) {}
-    // Pause/resume ambient glow and auto-fade when tab visibility changes.
-    document.addEventListener("visibilitychange", () => {
-      checkAmbientConditions();
-      checkAutoFadeConditions();
-    });
     loadSettings(() => {
       applyAll();
-      mo.observe(document.documentElement, { childList: true, subtree: true });
-      // Fast poll to catch ad skip-buttons and unskippable ads promptly.
-      if (!adTimer) adTimer = setInterval(handleAds, 200);
+      heartbeat = setInterval(tick, 1000);
+      scheduleAdTick();
     });
   }
 

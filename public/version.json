@@ -1,6 +1,6 @@
 {
-  "version": "1.15.3",
+  "version": "1.16.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Fixed speed preset buttons spacing with clean pill layout and track snap pips."
+  "notes": "Compact one-row controls, switch speed between slider and preset buttons, and fixes for video lag, flicker and the page disappearing."
 }
