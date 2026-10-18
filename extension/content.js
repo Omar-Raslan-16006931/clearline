@@ -679,7 +679,7 @@
    */
   const BAR_CSS = `
     :host{
-      all:initial;display:block;position:relative;z-index:5;margin:22px 0 8px;contain:layout;
+      all:initial;display:block;position:relative;z-index:5;margin:0;padding:40px 0 8px;contain:layout;
       font-family:Roboto,"YouTube Noto",Arial,sans-serif;color:var(--text);
       --ease:cubic-bezier(.4,0,.2,1);--amb:255 82 119;
       --surface:#1a1a1c;--border:rgba(255,255,255,.10);--text:#f5f5f7;--text2:#a8a8ad;
@@ -882,6 +882,8 @@
 
   function createBar() {
     const host = h("div", { id: "ct-bar" });
+    // Inline padding (can't collapse, can't be overridden by page CSS) pushes the bar well below the player.
+    host.style.cssText = "display:block;margin:0;padding:40px 0 8px;";
     const root = host.attachShadow({ mode: "open" });
     root.append(h("style", null, BAR_CSS));
     ["keydown", "keyup", "keypress"].forEach((t) => host.addEventListener(t, (e) => e.stopPropagation()));
