@@ -22,6 +22,8 @@
     speed: 1,
     speedPresets: "1, 1.5, 2, 2.5, 3, 5, 10",
     speedMode: "slider", // "slider" | "buttons"
+    ambientGlow: true,
+    autoFadeUI: true,
   };
   let settings = { ...DEFAULTS };
 
@@ -142,7 +144,15 @@
       renderSegmentBar();
       applySpeed();
     });
-    v.addEventListener("playing", () => applySpeed());
+    v.addEventListener("playing", () => {
+      applySpeed();
+      effectsTick();
+      bumpActivity();
+    });
+    v.addEventListener("pause", () => {
+      effectsTick();
+      setIdle(false);
+    });
     applyLoop();
     applySpeed(true);
     applyBoost();
@@ -669,41 +679,63 @@
    */
   const BAR_CSS = `
     :host{
-      all:initial;display:block;margin:8px 0;contain:layout;
+      all:initial;display:block;position:relative;z-index:5;margin:8px 0;contain:layout;
       font-family:Roboto,"YouTube Noto",Arial,sans-serif;color:var(--text);
-      --ease:cubic-bezier(.4,0,.2,1);
+      --ease:cubic-bezier(.4,0,.2,1);--amb:255 82 119;
       --surface:#1a1a1c;--border:rgba(255,255,255,.10);--text:#f5f5f7;--text2:#a8a8ad;
       --track:rgba(255,255,255,.32);--accent:#ff5277;--accent-soft:rgba(255,82,119,.16);
-      --on-accent:#1a1a1c;--hover:rgba(255,255,255,.08);--thumb:#fff;
+      --on-accent:#1a1a1c;--hover:rgba(255,255,255,.08);--thumb:#fff;--tip-bg:#f5f5f7;--tip-fg:#0f0f0f;
     }
     :host([data-theme="light"]){
       --surface:#f6f6f7;--border:rgba(0,0,0,.10);--text:#0f0f0f;--text2:#5f5f66;
       --track:rgba(0,0,0,.45);--accent:#d11f4b;--accent-soft:rgba(209,31,75,.10);
-      --on-accent:#fff;--hover:rgba(0,0,0,.06);
+      --on-accent:#fff;--hover:rgba(0,0,0,.06);--tip-bg:#1a1a1c;--tip-fg:#fff;
     }
     *{box-sizing:border-box;margin:0;padding:0}
+
+    /* Bar hugs its content instead of stretching across the page. */
     .bar{
-      position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:44px;padding:6px 8px 6px 12px;
-      background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;width:fit-content;max-width:100%;
+      min-height:40px;padding:5px 6px 5px 12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      animation:enter .24s var(--ease);
+      transition:opacity .4s var(--ease),box-shadow .9s ease,border-color .9s ease;
     }
+    @keyframes enter{from{opacity:0;transform:translateY(4px)}}
+    /* Ambient glow: the bar picks up the video's colors. */
+    .bar::before{
+      content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
+      background:linear-gradient(100deg,rgb(var(--amb) / .16),transparent 60%);transition:opacity .6s ease;
+    }
+    :host([data-glow]) .bar{border-color:rgb(var(--amb) / .35);box-shadow:0 8px 26px -10px rgb(var(--amb) / .7)}
+    :host([data-glow]) .bar::before{opacity:1}
+    :host([data-glow]) .brand i{background:rgb(var(--amb));box-shadow:0 0 8px rgb(var(--amb))}
+    /* Auto-fade: dims while the video plays and you're not using the bar. */
+    :host([data-idle]) .bar{opacity:.3}
+    :host([data-playing]) .brand i{animation:breathe 2.4s ease-in-out infinite}
+    @keyframes breathe{50%{opacity:.45;transform:scale(.8)}}
+
+    .bar>*{position:relative}
+    [data-tip]{position:relative}
+    span[data-tip]{display:inline-flex}
     .brand{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
-    .brand i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
-    .sep{width:1px;height:20px;background:var(--border)}
-    .grp{position:relative;display:flex;align-items:center;gap:8px;min-width:0}
-    .speed{flex:1 1 220px}
-    .vol{flex:0 1 180px}
-    .end{display:flex;align-items:center;gap:4px;margin-left:auto}
+    .brand i{width:6px;height:6px;border-radius:50%;background:var(--accent);transition:background-color .9s ease}
+    .sep{width:1px;height:18px;background:var(--border)}
+    .grp{position:relative;display:flex;align-items:center;gap:6px;min-width:0}
+    .end{display:flex;align-items:center;gap:2px}
 
     .val{
-      width:52px;height:28px;padding:0 6px;border:1px solid transparent;border-radius:8px;background:transparent;
+      width:50px;height:28px;padding:0 6px;border:1px solid transparent;border-radius:8px;background:transparent;
       font:600 15px Roboto,Arial,sans-serif;color:var(--accent);font-variant-numeric:tabular-nums;outline:none;
       transition:border-color .12s var(--ease),background-color .12s var(--ease);
     }
     .val:hover{background:var(--hover)}
     .val:focus{border-color:var(--accent);background:transparent}
+    .val.bump{animation:bump .18s var(--ease)}
+    @keyframes bump{50%{transform:scale(1.12)}}
     .num{min-width:36px;font-size:13px;font-weight:500;color:var(--text2);font-variant-numeric:tabular-nums;text-align:right}
 
-    .slider{position:relative;flex:1;min-width:96px}
+    .slider{position:relative;flex:none;width:140px}
+    .vol .slider{width:88px}
     input[type=range]{
       -webkit-appearance:none;appearance:none;display:block;width:100%;height:20px;background:transparent;cursor:pointer;--p:0%;border-radius:6px;
     }
@@ -713,59 +745,69 @@
     input[type=range]::-webkit-slider-thumb{
       -webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;
       background:var(--thumb);border:0;box-shadow:0 0 0 1px rgba(0,0,0,.18),0 1px 3px rgba(0,0,0,.35);
-      transition:transform .12s var(--ease);
+      transition:transform .12s var(--ease),box-shadow .6s ease;
     }
-    input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
+    :host([data-glow]) input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 1px rgba(0,0,0,.18),0 0 10px 1px rgb(var(--amb) / .9)}
+    input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18)}
     :is(input,button):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .pips{position:absolute;left:0;right:0;bottom:1px;height:3px;pointer-events:none}
     .pip{position:absolute;top:0;width:1px;height:3px;background:var(--track);transform:translateX(-50%)}
 
     button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
     .ib{
-      display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--text2);flex:none;
-      transition:background-color .12s var(--ease),color .12s var(--ease);
+      position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--text2);flex:none;
+      transition:background-color .12s var(--ease),color .12s var(--ease),transform .1s var(--ease);
     }
     .ib:hover{background:var(--hover);color:var(--text)}
     .ib[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
-    .ib svg,.glyph svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    :is(.ib,.chip,.seg button,.primary):active{transform:scale(.92)}
+    .ib svg,.glyph svg,.seg svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     .glyph{display:inline-flex;color:var(--text2);flex:none}
 
+    /* Instant labelled tooltips so every icon says what it does. */
+    [data-tip]::after{
+      content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;z-index:20;transform:translate(-50%,4px);
+      white-space:nowrap;padding:4px 8px;border-radius:6px;background:var(--tip-bg);color:var(--tip-fg);
+      font:500 12px/16px Roboto,Arial,sans-serif;opacity:0;pointer-events:none;
+      transition:opacity .12s var(--ease),transform .12s var(--ease);
+    }
+    [data-tip]:hover::after,[data-tip]:focus-visible::after{opacity:1;transform:translate(-50%,0);transition-delay:.2s}
+
+    .seg{display:inline-flex;flex:none;padding:2px;gap:2px;border-radius:8px;background:var(--hover)}
+    .seg button{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:6px;color:var(--text2);
+      transition:background-color .12s var(--ease),color .12s var(--ease),transform .1s var(--ease)}
+    .seg button:hover{color:var(--text)}
+    .seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
+
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
+    .chip{
+      height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:500;color:var(--text2);
+      font-variant-numeric:tabular-nums;transition:background-color .12s var(--ease),color .12s var(--ease),border-color .12s var(--ease),transform .1s var(--ease);
+    }
+    .chip:hover{background:var(--hover);color:var(--text)}
+    .chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+    .inline{flex:none;max-width:340px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+    .inline::-webkit-scrollbar{display:none}
+    .inline .chip{flex:none;padding:0 8px}
+    [hidden]{display:none!important}
+
     .pop{
-      position:absolute;z-index:10;top:calc(100% + 10px);left:0;width:300px;max-width:calc(100vw - 32px);display:grid;gap:10px;padding:12px;
+      position:absolute;z-index:30;top:calc(100% + 10px);left:0;width:300px;max-width:calc(100vw - 32px);display:grid;gap:10px;padding:12px;
       background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.35);
       opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .16s var(--ease),transform .16s var(--ease);
     }
     .pop.open{opacity:1;transform:none;pointer-events:auto}
     .cap{font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)}
-    .chips{display:flex;flex-wrap:wrap;gap:6px}
-    /* Inline preset buttons that take the slider's place. One row; scrolls sideways if it runs out of room. */
-    .inline{flex:1;min-width:96px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
-    .inline::-webkit-scrollbar{display:none}
-    .inline .chip{flex:none;padding:0 8px}
-    [hidden]{display:none!important}
-    /* Segmented control: slider ↔ buttons. Selected segment = filled + tinted. */
-    .seg{display:inline-flex;flex:none;padding:2px;gap:2px;border-radius:8px;background:var(--hover)}
-    .seg button{display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:6px;color:var(--text2);
-      transition:background-color .12s var(--ease),color .12s var(--ease)}
-    .seg button:hover{color:var(--text)}
-    .seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
-    .seg svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-    .chip{
-      height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:500;color:var(--text2);
-      font-variant-numeric:tabular-nums;transition:background-color .12s var(--ease),color .12s var(--ease),border-color .12s var(--ease);
-    }
-    .chip:hover{background:var(--hover);color:var(--text)}
-    .chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
     .pop input[type=text]{
       width:100%;height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--border);
       background:transparent;color:var(--text);font:500 13px Roboto,Arial,sans-serif;outline:none;
     }
     .pop input[type=text]:focus{border-color:var(--accent)}
     .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-    .primary{height:28px;padding:0 14px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:600}
+    .primary{height:28px;padding:0 14px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:600;transition:transform .1s var(--ease)}
     .ghost{height:28px;padding:0 10px;border-radius:999px;font-size:13px;color:var(--text2)}
     .ghost:hover{background:var(--hover);color:var(--text)}
-    @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+    @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
     @media (prefers-contrast:more){
       :host{--text2:#d1d1d6;--border:rgba(255,255,255,.4);--track:rgba(255,255,255,.6)}
       :host([data-theme="light"]){--text2:#3a3a40;--border:rgba(0,0,0,.5);--track:rgba(0,0,0,.65)}
@@ -773,14 +815,18 @@
   `;
 
   const ICONS = {
+    settings: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
     modeSlider: '<svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="9" cy="12" r="2.6" fill="currentColor"/></svg>',
     modeButtons: '<svg viewBox="0 0 24 24"><rect x="2.5" y="8" width="5.5" height="8" rx="2"/><rect x="9.25" y="8" width="5.5" height="8" rx="2"/><rect x="16" y="8" width="5.5" height="8" rx="2"/></svg>',
-    presets: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
     volume: '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>',
+    // repeat arrows = loop
     loop: '<svg viewBox="0 0 24 24"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 014-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 01-4 4H4"/></svg>',
-    skipSponsors: '<svg viewBox="0 0 24 24"><path d="M5 5l9 7-9 7V5z"/><path d="M19 5v14"/></svg>',
-    blockAds: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
-    hideShorts: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0112 6c5 0 9 6 9 6a17 17 0 01-3.2 3.8M6.6 6.6C4.2 8.2 3 12 3 12s4 6 9 6c1.6 0 3-.4 4.3-1.1"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/></svg>',
+    // $ followed by skip-to-end = skip sponsor segments
+    skipSponsors: '<svg viewBox="0 0 24 24"><path d="M7.5 3.5v17"/><path d="M11 7.2c0-1.5-1.5-2.4-3.5-2.4S4 5.7 4 7.2s1.5 2.3 3.5 2.8 3.5 1.2 3.5 2.9-1.5 2.8-3.5 2.8S4 14.8 4 13.2"/><path d="M14.5 8l4 4-4 4"/><path d="M20.5 8v8"/></svg>',
+    // "AD" badge with a strike = block ads
+    blockAds: '<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 15l2.2-6 2.2 6M7.3 13.2h2.8"/><path d="M13.5 9v6h1.3a3 3 0 000-6z"/><path d="M3 3l18 18"/></svg>',
+    // vertical "Shorts" card with a strike = hide Shorts
+    hideShorts: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><path d="M11 9.5v5l4-2.5z"/><path d="M3 3l18 18"/></svg>',
     download: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
   };
   const PROFILES = [
@@ -789,13 +835,15 @@
     ["Study", "1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3"],
     ["Ultra", "1, 2, 5, 10, 20, 50, 100"],
   ];
-  // Icon toggles (HIG: outside a list, use a button that behaves like a toggle;
-  // state = filled background + tint, not color alone). Labels live in tooltips/aria.
   const TOGGLES = [
-    ["loop", "Loop"],
+    ["loop", "Loop video"],
     ["skipSponsors", "Skip sponsors"],
     ["blockAds", "Block ads"],
     ["hideShorts", "Hide Shorts"],
+  ];
+  const EFFECTS = [
+    ["ambientGlow", "Ambient glow"],
+    ["autoFadeUI", "Auto-fade bar"],
   ];
 
   function h(tag, attrs, ...kids) {
@@ -819,25 +867,37 @@
     const min = Number(input.min);
     const max = Number(input.max);
     const f = (Number(input.value) - min) / (max - min);
-    // Fill ends at the thumb centre (thumb is 14px → inset 7px each end).
     input.style.setProperty("--p", "calc(7px + (100% - 14px) * " + f + ")");
   }
   const pipLeft = (frac) => "calc(7px + (100% - 14px) * " + frac + ")";
+
+  function bumpValue() {
+    if (!barUI) return;
+    const el = barUI.hero;
+    el.classList.remove("bump");
+    void el.offsetWidth; // restart the animation
+    el.classList.add("bump");
+  }
 
   function createBar() {
     const host = h("div", { id: "ct-bar" });
     const root = host.attachShadow({ mode: "open" });
     root.append(h("style", null, BAR_CSS));
-    // Keep keystrokes inside our controls from triggering YouTube shortcuts.
     ["keydown", "keyup", "keypress"].forEach((t) => host.addEventListener(t, (e) => e.stopPropagation()));
+    // Any interaction with the bar wakes it from auto-fade.
+    ["pointerenter", "pointerdown", "focusin"].forEach((t) => host.addEventListener(t, () => bumpActivity()));
 
-    const ui = { host, root, chips: [], togs: {} };
+    const ui = { host, root, chips: [], togs: {}, fx: {} };
 
-    /* speed: editable value + log slider + presets popover */
-    ui.hero = h("input", { class: "val", type: "text", inputmode: "decimal", spellcheck: "false", "aria-label": "Playback speed", title: "Playback speed — type an exact value (0.25–100)" });
+    /* speed value (type an exact number) */
+    ui.hero = h("input", { class: "val", type: "text", inputmode: "decimal", spellcheck: "false", "aria-label": "Playback speed" });
+    const heroWrap = h("span", { "data-tip": "Speed — click to type" }, ui.hero);
     const commitHero = () => {
       const n = parseFloat(String(ui.hero.value).replace(/[×x\s]/gi, ""));
-      if (isFinite(n)) setSpeed(clamp(Math.round(n * 100) / 100, SPEED_MIN, SPEED_MAX), true);
+      if (isFinite(n)) {
+        setSpeed(clamp(Math.round(n * 100) / 100, SPEED_MIN, SPEED_MAX), true);
+        bumpValue();
+      }
       syncBar();
     };
     ui.hero.addEventListener("focus", () => ui.hero.select());
@@ -853,29 +913,51 @@
       }
     });
 
+    /* speed slider (log scale 0.25×–100×, magnetic) */
     ui.speed = h("input", { type: "range", min: "0", max: String(SLIDER_STEPS), step: "2", "aria-label": "Playback speed slider" });
     ui.pips = h("div", { class: "pips", "aria-hidden": "true" });
     ui.speed.addEventListener("input", () => {
       const m = magnetize(posToSpeed(Number(ui.speed.value)));
-      if (m.snapped) ui.speed.value = String(speedToPos(m.value)); // thumb "sticks" to the snap point
+      if (m.snapped) ui.speed.value = String(speedToPos(m.value));
       paintRange(ui.speed);
-      ui.hero.value = fmtSpeed(m.value);
+      if (ui.hero.value !== fmtSpeed(m.value)) {
+        ui.hero.value = fmtSpeed(m.value);
+        if (m.snapped) bumpValue();
+      }
       ui.speed.setAttribute("aria-valuetext", fmtSpeed(m.value));
-      ui.speed.title = fmtSpeed(m.value);
       markChips(m.value);
-      setSpeed(m.value, false); // live preview, no storage write
+      setSpeed(m.value, false);
     });
     ui.speed.addEventListener("change", () => setSpeed(magnetize(posToSpeed(Number(ui.speed.value))).value, true));
-
-    const presetsBtn = h("button", { class: "ib", type: "button", title: "Speed presets", "aria-label": "Speed presets", "aria-haspopup": "dialog", html: ICONS.presets });
-
-    ui.chipRow = h("div", { class: "chips" });
+    ui.sliderWrap = h("div", { class: "slider" }, ui.speed, ui.pips);
     ui.inlineRow = h("div", { class: "chips inline", role: "group", "aria-label": "Speed presets" });
-    const pop = h("div", { class: "pop", role: "dialog", "aria-label": "Speed presets" });
+
+    /* slider ↔ buttons switch */
+    ui.modeBtns = {
+      slider: h("button", { type: "button", "data-tip": "Speed slider", "aria-label": "Speed slider", html: ICONS.modeSlider }),
+      buttons: h("button", { type: "button", "data-tip": "Speed buttons", "aria-label": "Speed buttons", html: ICONS.modeButtons }),
+    };
+    for (const mode of Object.keys(ui.modeBtns)) {
+      ui.modeBtns[mode].addEventListener("click", () => {
+        if (settings.speedMode === mode) return;
+        settings.speedMode = mode;
+        persist({ speedMode: mode });
+        syncMode();
+      });
+    }
+    const seg = h("div", { class: "seg", role: "group", "aria-label": "Speed control style" }, ui.modeBtns.slider, ui.modeBtns.buttons);
+
+    /* settings popover: presets + effects */
+    const settingsBtn = h("button", { class: "ib", type: "button", "data-tip": "Presets & effects", "aria-label": "Presets and effects", "aria-haspopup": "dialog", html: ICONS.settings });
+    ui.chipRow = h("div", { class: "chips" });
+    const pop = h("div", { class: "pop", role: "dialog", "aria-label": "Presets and effects" });
     const popInput = h("input", { type: "text", placeholder: "e.g. 1, 1.5, 2, 3, 5", "aria-label": "Custom presets, comma-separated" });
-    const closePop = () => pop.classList.remove("open");
-    // HIG: a nonmodal popover that closes itself keeps the person's work —
-    // Done, Enter and clicking outside all save. Only Escape discards.
+    const closePop = () => {
+      pop.classList.remove("open");
+      settingsBtn.setAttribute("aria-expanded", "false");
+    };
+    // HIG: a self-closing popover keeps the person's work — Done, Enter and
+    // clicking outside all save. Only Escape discards.
     const savePop = () => {
       if (!pop.classList.contains("open")) return;
       const formatted = parseSpeedPresets(popInput.value).join(", ");
@@ -887,15 +969,30 @@
       }
       closePop();
     };
+    const fxRow = h("div", { class: "chips" });
+    for (const [key, label] of EFFECTS) {
+      const b = h("button", { class: "chip", type: "button", "aria-pressed": "false" }, label);
+      b.addEventListener("click", () => {
+        settings[key] = !settings[key];
+        persist({ [key]: settings[key] });
+        b.setAttribute("aria-pressed", String(!!settings[key]));
+        applyEffects();
+      });
+      ui.fx[key] = b;
+      fxRow.append(b);
+    }
     pop.append(
+      h("div", { class: "cap" }, "Quick speeds"),
       ui.chipRow,
-      h("div", { class: "cap" }, "Profiles"),
+      h("div", { class: "cap" }, "Preset profiles"),
       h("div", { class: "chips" }, ...PROFILES.map(([name, val]) => h("button", { class: "chip", type: "button", onclick: () => (popInput.value = val) }, name))),
       popInput,
+      h("div", { class: "cap" }, "Effects"),
+      fxRow,
       h(
         "div",
         { class: "row" },
-        h("button", { class: "ghost", type: "button", onclick: () => (popInput.value = DEFAULTS.speedPresets) }, "Reset"),
+        h("button", { class: "ghost", type: "button", onclick: () => (popInput.value = DEFAULTS.speedPresets) }, "Reset presets"),
         h("button", { class: "primary", type: "button", onclick: savePop }, "Done")
       )
     );
@@ -908,50 +1005,36 @@
         closePop();
       }
     });
-    presetsBtn.addEventListener("click", () => {
+    settingsBtn.addEventListener("click", () => {
       if (pop.classList.contains("open")) return savePop();
       popInput.value = settings.speedPresets || DEFAULTS.speedPresets;
       pop.classList.add("open");
-      presetsBtn.setAttribute("aria-expanded", "true");
+      settingsBtn.setAttribute("aria-expanded", "true");
     });
-    ui.closePop = () => {
-      savePop();
-      presetsBtn.setAttribute("aria-expanded", "false");
-    };
+    ui.closePop = savePop;
     ui.pop = pop;
-    ui.editBtn = presetsBtn;
+    ui.editBtn = settingsBtn;
 
-    // Switch between the slider and inline preset buttons (remembered across videos).
-    ui.sliderWrap = h("div", { class: "slider" }, ui.speed, ui.pips);
-    ui.modeBtns = {
-      slider: h("button", { type: "button", title: "Speed slider", "aria-label": "Speed slider", html: ICONS.modeSlider }),
-      buttons: h("button", { type: "button", title: "Speed buttons", "aria-label": "Speed buttons", html: ICONS.modeButtons }),
-    };
-    for (const mode of Object.keys(ui.modeBtns)) {
-      ui.modeBtns[mode].addEventListener("click", () => {
-        if (settings.speedMode === mode) return;
-        settings.speedMode = mode;
-        persist({ speedMode: mode });
-        syncMode();
-      });
-    }
-    const seg = h("div", { class: "seg", role: "group", "aria-label": "Speed control style" }, ui.modeBtns.slider, ui.modeBtns.buttons);
+    const speedGrp = h("div", { class: "grp speed" }, heroWrap, ui.sliderWrap, ui.inlineRow, seg, settingsBtn, pop);
 
-    const speedGrp = h("div", { class: "grp speed" }, ui.hero, ui.sliderWrap, ui.inlineRow, seg, presetsBtn, pop);
-
-    /* volume */
+    /* volume boost */
     ui.volVal = h("span", { class: "num" }, "100%");
     ui.vol = h("input", { type: "range", min: "100", max: "500", step: "10", "aria-label": "Volume boost" });
     ui.vol.addEventListener("input", () => {
       ui.volVal.textContent = ui.vol.value + "%";
-      ui.vol.title = ui.vol.value + "%";
       paintRange(ui.vol);
       setVolumeBoost(Number(ui.vol.value), false);
     });
     ui.vol.addEventListener("change", () => setVolumeBoost(Number(ui.vol.value), true));
-    const volGrp = h("div", { class: "grp vol", title: "Volume boost (100–500%)" }, h("span", { class: "glyph", html: ICONS.volume }), h("div", { class: "slider" }, ui.vol), ui.volVal);
+    const volGrp = h(
+      "div",
+      { class: "grp vol" },
+      h("span", { class: "glyph", "data-tip": "Volume boost (up to 500%)", html: ICONS.volume }),
+      h("div", { class: "slider" }, ui.vol),
+      ui.volVal
+    );
 
-    /* toggles + download */
+    /* feature toggles + download */
     const end = h("div", { class: "end" });
     for (const [key, label] of TOGGLES) {
       const b = h("button", { class: "ib", type: "button", "aria-pressed": "false", "aria-label": label, html: ICONS[key] });
@@ -964,13 +1047,12 @@
       ui.togs[key] = [b, label];
       end.append(b);
     }
-    const dlBtn = h("button", { class: "ib", type: "button", title: "Download (choose quality)", "aria-label": "Download", html: ICONS.download });
+    const dlBtn = h("button", { class: "ib", type: "button", "data-tip": "Download — choose quality", "aria-label": "Download", html: ICONS.download });
     dlBtn.addEventListener("click", () => {
       try {
         chrome.runtime.sendMessage({ type: "OPEN_DOWNLOAD" });
       } catch (_) {}
     });
-    end.append(h("span", { class: "sep" }), dlBtn);
 
     root.append(
       h(
@@ -981,7 +1063,10 @@
         speedGrp,
         h("span", { class: "sep" }),
         volGrp,
-        end
+        h("span", { class: "sep" }),
+        end,
+        h("span", { class: "sep" }),
+        dlBtn
       )
     );
     return ui;
@@ -990,7 +1075,7 @@
   function syncToggle(b, key, label) {
     const on = !!settings[key];
     b.setAttribute("aria-pressed", String(on));
-    b.title = label + (on ? ": on" : ": off");
+    b.setAttribute("data-tip", label + (on ? " · On" : " · Off"));
   }
 
   function syncMode() {
@@ -1026,6 +1111,7 @@
           paintRange(ui.speed);
           ui.hero.value = fmtSpeed(p);
           markChips(p);
+          bumpValue();
           setSpeed(p, true);
         });
         ui.chips.push(chip);
@@ -1042,9 +1128,8 @@
     const ui = barUI;
     if (!ui) return;
     const cur = clamp(Number(settings.speed) || 1, SPEED_MIN, SPEED_MAX);
-    if (ui.root.activeElement !== ui.hero) ui.hero.value = fmtSpeed(cur); // don't clobber typing
+    if (ui.root.activeElement !== ui.hero) ui.hero.value = fmtSpeed(cur);
     ui.speed.value = String(speedToPos(cur));
-    ui.speed.title = fmtSpeed(cur);
     ui.speed.setAttribute("aria-valuetext", fmtSpeed(cur));
     paintRange(ui.speed);
     renderPresets(false);
@@ -1055,8 +1140,120 @@
     ui.volVal.textContent = vol + "%";
     paintRange(ui.vol);
     for (const key of Object.keys(ui.togs)) syncToggle(ui.togs[key][0], key, ui.togs[key][1]);
+    for (const key of Object.keys(ui.fx)) ui.fx[key].setAttribute("aria-pressed", String(!!settings[key]));
     const theme = document.documentElement.hasAttribute("dark") ? "dark" : "light";
     if (ui.host.getAttribute("data-theme") !== theme) ui.host.setAttribute("data-theme", theme);
+  }
+
+  /* ---------- EFFECTS: ambient glow + auto-fade ----------
+   * Safe versions of the old effects. They only restyle our own bar plus a
+   * box-shadow on the player — never YouTube's layout (no position, overflow,
+   * border or page-wide visibility changes), and the color is sampled once a
+   * second from an 8×4 thumbnail, not every 120ms.
+   */
+  let ambCanvas = null;
+  let ambCtx = null;
+  let ambLast = "";
+  let glowEl = null;
+
+  function clearPlayerGlow() {
+    if (glowEl) {
+      glowEl.style.boxShadow = "";
+      glowEl.style.transition = "";
+      glowEl = null;
+    }
+  }
+  function stopAmbient() {
+    ambLast = "";
+    clearPlayerGlow();
+    if (barUI) barUI.host.removeAttribute("data-glow");
+  }
+
+  function sampleAmbient() {
+    if (!settings.ambientGlow || !barUI) return;
+    const v = video();
+    if (!v || v.paused || v.readyState < 2 || !v.videoWidth || isAdShowing()) return;
+    try {
+      if (!ambCanvas) {
+        ambCanvas = document.createElement("canvas");
+        ambCanvas.width = 8;
+        ambCanvas.height = 4;
+        ambCtx = ambCanvas.getContext("2d", { willReadFrequently: true });
+      }
+      ambCtx.drawImage(v, 0, 0, 8, 4);
+      const d = ambCtx.getImageData(0, 0, 8, 4).data;
+      let r = 0, g = 0, b = 0;
+      const n = d.length / 4;
+      for (let i = 0; i < d.length; i += 4) {
+        r += d[i];
+        g += d[i + 1];
+        b += d[i + 2];
+      }
+      r /= n;
+      g /= n;
+      b /= n;
+      // Lift brightness and saturation so the glow reads on a dark page.
+      const gray = (r + g + b) / 3;
+      const sat = (c) => gray + (c - gray) * 1.7;
+      r = sat(r);
+      g = sat(g);
+      b = sat(b);
+      const mx = Math.max(r, g, b, 1);
+      const lift = Math.min(3, 230 / mx);
+      const rgb = [r, g, b].map((c) => clamp(Math.round(c * lift), 0, 255)).join(" ");
+      if (rgb === ambLast) return;
+      ambLast = rgb;
+      barUI.host.style.setProperty("--amb", rgb);
+      barUI.host.setAttribute("data-glow", "");
+      const target = document.querySelector("#ytd-player") || $("movie_player");
+      if (target) {
+        if (glowEl && glowEl !== target) clearPlayerGlow();
+        glowEl = target;
+        target.style.transition = "box-shadow .9s ease";
+        target.style.boxShadow = "0 0 56px 4px rgb(" + rgb.replace(/ /g, ",") + ",0.32)";
+      }
+    } catch (_) {}
+  }
+
+  let fadeTimer = null;
+  let lastActivity = 0;
+  function setIdle(on) {
+    if (barUI) barUI.host.toggleAttribute("data-idle", !!on);
+  }
+  function bumpActivity() {
+    setIdle(false);
+    clearTimeout(fadeTimer);
+    const v = video();
+    if (!settings.autoFadeUI || !barUI || !v || v.paused) return;
+    fadeTimer = setTimeout(() => {
+      if (!barUI) return;
+      const busy = barUI.pop.classList.contains("open") || barUI.root.activeElement || barUI.host.matches(":hover");
+      if (busy) return bumpActivity();
+      const vv = video();
+      if (vv && !vv.paused) setIdle(true);
+    }, 3000);
+  }
+  const onActivity = () => {
+    const now = Date.now();
+    if (now - lastActivity < 250) return; // throttle mousemove
+    lastActivity = now;
+    bumpActivity();
+  };
+  ["mousemove", "keydown", "wheel", "touchstart"].forEach((t) => document.addEventListener(t, onActivity, { passive: true, capture: true }));
+
+  function applyEffects() {
+    if (!settings.ambientGlow) stopAmbient();
+    else sampleAmbient();
+    if (!settings.autoFadeUI) {
+      clearTimeout(fadeTimer);
+      setIdle(false);
+    } else bumpActivity();
+  }
+  function effectsTick() {
+    if (!barUI) return;
+    const v = video();
+    barUI.host.toggleAttribute("data-playing", !!(v && !v.paused));
+    sampleAmbient();
   }
 
   function mountTarget() {
@@ -1084,6 +1281,7 @@
     }
   }
   function removeBar() {
+    clearPlayerGlow();
     if (barUI) {
       try {
         barUI.host.remove();
@@ -1127,6 +1325,7 @@
     renderSegmentBar();
     loadDislikes();
     handleAds();
+    applyEffects();
   }
 
   let heartbeat = null;
@@ -1147,6 +1346,7 @@
       maybeLoadSegments();
       renderSegmentBar();
       loadDislikes();
+      effectsTick();
       if (barUI) {
         const theme = document.documentElement.hasAttribute("dark") ? "dark" : "light";
         if (barUI.host.getAttribute("data-theme") !== theme) barUI.host.setAttribute("data-theme", theme);

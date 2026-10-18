@@ -1,6 +1,6 @@
 {
-  "version": "1.16.0",
+  "version": "1.16.1",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Compact one-row controls, switch speed between slider and preset buttons, and fixes for video lag, flicker and the page disappearing."
+  "notes": "Slimmer bar that fits its content, shorter speed slider, clearer icons with hover labels, and ambient glow + auto-fade are back."
 }
