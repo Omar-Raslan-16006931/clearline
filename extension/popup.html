@@ -12,19 +12,22 @@
       font-display: swap;
     }
     :root {
-      --bg: #f2ece1;
-      --ink: #2c2721;
-      --muted: #6b6258; /* was #837a6f (3.6:1 on --bg) → 5.1:1 */
-      --line: #e4dbcc;
-      --track: #d6cec0;
-      --accent: #c67f56;
-      --accent-ink: #8f5230; /* was #a1603a (4.2:1) → 5.2:1 */
-      --accent-soft: #ecdfcd;
-      --hover: #ebe1d2;
+      --bg: #0f0f10;
+      --card: #1a1a1c;
+      --ink: #f5f5f7;
+      --muted: #a8a8ad;
+      --line: #26262a;
+      --track: rgba(255,255,255,.28);
+      --accent: #ff5277;
+      --accent-ink: #ff8aa3;
+      --accent-soft: rgba(255,82,119,.16);
+      --on-accent: #1a1a1c;
+      --hover: rgba(255,255,255,.07);
+      --ease: cubic-bezier(.4, 0, .2, 1);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 304px;
+      width: 340px;
       background: var(--bg);
       color: var(--ink);
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -32,149 +35,115 @@
       line-height: 1.35;
       -webkit-font-smoothing: antialiased;
     }
-    body.lang-ar { font-family: "Janna LT", system-ui, sans-serif; font-weight: 700; -webkit-font-smoothing: antialiased; }
+    body.lang-ar { font-family: "Janna LT", system-ui, sans-serif; font-weight: 700; }
     body.lang-ar .brand, body.lang-ar .label { font-weight: 700; }
     body.lang-ar .label { font-size: 14px; }
-    body.lang-ar .sub, body.lang-ar #dlNote, body.lang-ar footer, body.lang-ar #savedStat, body.lang-ar .dlbtn, body.lang-ar .section h2 { font-weight: 700; font-size: 12px; }
-    .wrap { padding: 14px 16px 16px; }
+    body.lang-ar .sub, body.lang-ar #dlNote, body.lang-ar footer, body.lang-ar #savedStat, body.lang-ar .dlbtn, body.lang-ar .cap { font-weight: 700; font-size: 12px; }
+    .wrap { padding: 16px; }
+    button { font: inherit; color: inherit; }
+    :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 12px;
-    }
-    .brand { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-    .brand b { font-weight: 700; color: var(--accent); }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+    .brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .brand b { color: var(--accent); font-weight: 700; }
 
-    /* segmented language control */
-    .seg { display: inline-flex; background: var(--hover); border-radius: 8px; padding: 2px; gap: 2px; }
+    .seg { display: inline-flex; background: var(--hover); border-radius: 9px; padding: 2px; gap: 2px; }
     .seg button {
-      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-      border: 0; background: transparent; color: var(--muted);
-      padding: 3px 9px; border-radius: 6px; line-height: 1.4;
+      font-size: 12px; font-weight: 600; cursor: pointer; border: 0; background: transparent; color: var(--muted);
+      padding: 4px 10px; border-radius: 7px; line-height: 1.4; transition: background-color .15s var(--ease), color .15s var(--ease);
     }
-    .seg button.on { background: #fdf9f2; color: var(--ink); box-shadow: 0 1px 2px rgba(80,60,40,.12); }
+    .seg button:hover { color: var(--ink); }
+    .seg button.on { background: var(--accent-soft); color: var(--accent); }
 
-    /* rows */
-    .row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 11px 2px;
-    }
-    .row + .row { border-top: 1px solid var(--line); }
+    /* grouped cards */
+    .cap { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 16px 4px 6px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; transition: opacity .2s var(--ease), background-color .15s var(--ease); }
+    .row + .row, #savedStat + .row, .vol, .row + .vol { border-top: 1px solid var(--line); }
     .row .text { flex: 1; min-width: 0; }
-    .row .label { font-weight: 500; }
-    .row .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
-    .row.off { opacity: .45; }
+    .row .label { font-weight: 500; font-size: 13.5px; }
+    .row .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    .row.off { opacity: .4; }
     .row.off .switch { pointer-events: none; }
-    .row, .dlbtn, .seg button { transition: background-color .2s cubic-bezier(.4, 0, .2, 1), opacity .2s cubic-bezier(.4, 0, .2, 1); }
 
-    /* switch */
-    .switch { position: relative; flex: none; width: 38px; height: 22px; cursor: pointer; }
+    .switch { position: relative; flex: none; width: 42px; height: 24px; cursor: pointer; }
     .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .track { position: absolute; inset: 0; background: var(--track); border-radius: 999px; transition: background .24s cubic-bezier(.4, 0, .2, 1); }
+    .track { position: absolute; inset: 0; background: var(--track); border-radius: 999px; transition: background .2s var(--ease); }
     .track::after {
-      content: ""; position: absolute; top: 2px; left: 2px;
-      width: 18px; height: 18px; background: #fff; border-radius: 50%;
-      box-shadow: 0 1px 2px rgba(70, 55, 40, .20); transition: transform .24s cubic-bezier(.4, 0, .2, 1);
+      content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #fff; border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .2s var(--ease);
     }
     input:checked + .track { background: var(--accent); }
-    input:checked + .track::after { transform: translateX(16px); }
+    input:checked + .track::after { transform: translateX(18px); }
+    input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    /* volume */
-    .vol { padding: 12px 2px 3px; border-top: 1px solid var(--line); }
+    .vol { padding: 12px 14px 14px; }
     .volhead { display: flex; align-items: center; justify-content: space-between; }
-    .volval { font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
-    #volume {
-      -webkit-appearance: none; appearance: none;
-      width: 100%; margin-top: 10px; height: 6px; cursor: pointer;
-      border-radius: 999px; background: var(--track);
-    }
-    #volume::-webkit-slider-runnable-track { -webkit-appearance: none; height: 6px; border-radius: 999px; background: transparent; }
+    .vol .label { font-weight: 500; font-size: 13.5px; }
+    .volval { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+    #volume { -webkit-appearance: none; appearance: none; width: 100%; margin-top: 12px; height: 4px; cursor: pointer; border-radius: 999px; background: var(--track); }
+    #volume::-webkit-slider-runnable-track { -webkit-appearance: none; height: 4px; border-radius: 999px; background: transparent; }
     #volume::-webkit-slider-thumb {
-      -webkit-appearance: none; appearance: none; margin-top: -5px;
-      width: 16px; height: 16px; border-radius: 50%;
-      background: var(--accent); border: 2px solid #fdf9f2;
-      box-shadow: 0 1px 2px rgba(70, 55, 40, .28);
-    }
-    #volume::-moz-range-track { height: 6px; border-radius: 999px; background: var(--track); }
-    #volume::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
-    #volume::-moz-range-thumb {
-      width: 16px; height: 16px; border-radius: 50%;
-      background: var(--accent); border: 2px solid #fdf9f2;
-      box-shadow: 0 1px 2px rgba(70, 55, 40, .28);
+      -webkit-appearance: none; appearance: none; margin-top: -5px; width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; border: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.2), 0 1px 3px rgba(0,0,0,.4);
     }
 
-    html { scrollbar-width: thin; scrollbar-color: #cfc6b7 transparent; }
-    ::-webkit-scrollbar { width: 9px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #d3cabb; border-radius: 999px; border: 2px solid var(--bg); }
-    ::-webkit-scrollbar-thumb:hover { background: #c4baaa; }
-
-    #savedStat { font-size: 11px; font-weight: 500; color: var(--accent-ink); padding: 3px 2px 9px; }
+    #savedStat { font-size: 11.5px; font-weight: 500; color: var(--accent-ink); padding: 0 14px 10px; margin-top: -4px; }
     #savedStat:empty { display: none; }
-    #savedStat + .row { border-top: 1px solid var(--line); }
 
-    /* download */
-    .section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-    .section h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
-    #dlNote { font-size: 11px; color: var(--muted); margin-bottom: 9px; }
-    .dlbtn {
-      display: flex; align-items: center; gap: 8px; width: 100%;
-      font: inherit; font-size: 12.5px; font-weight: 500; text-align: left; cursor: pointer;
-      background: transparent; color: var(--ink); border: 1px solid var(--line);
-      border-radius: 10px; padding: 10px 12px; margin-bottom: 7px;
-    }
-    .dlbtn:hover { background: var(--hover); }
-    .dlbtn::before {
-      content: ""; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--track); flex: none;
-    }
-    .dlbtn.primary { border-color: var(--accent-soft); }
-    .dlbtn.primary::before { background: var(--accent); }
-    #dlButtons.off { opacity: .45; pointer-events: none; }
-    #dlHint { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 14px; }
-
-    footer { font-size: 10.5px; color: var(--muted); text-align: center; margin-top: 12px; }
-
-    #updateBanner {
-      display: none; flex-direction: column; gap: 7px;
-      margin-bottom: 10px; padding: 9px 10px; border-radius: 10px;
-      background: var(--accent-soft); border: 1px solid var(--accent);
-    }
-    #updateBanner.show { display: flex; }
-    #updateBanner .row1 { display: flex; align-items: center; gap: 8px; }
-    #updateBanner .text { flex: 1; min-width: 0; }
-    #updateBanner .label { font-weight: 600; font-size: 12px; color: var(--accent-ink); }
-    #updateBanner .sub { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
-    #updateBanner a.dl, #updateBanner button.dl {
-      flex: none; font: inherit; font-size: 11.5px; font-weight: 600; text-decoration: none;
-      background: var(--accent); color: #fff; padding: 6px 10px; border-radius: 8px;
-      border: 0; cursor: pointer;
-    }
-    #updateBanner a.dl:hover, #updateBanner button.dl:hover { background: var(--accent-ink); }
-    #updateBanner .actions { display: flex; gap: 6px; }
-    #updateBanner button.dl.secondary {
-      background: transparent; color: var(--accent-ink); border: 1px solid var(--accent);
-    }
-    #updateBanner button.dl.secondary:hover { background: #fff; }
-
-    /* speed presets */
-    .speed-presets-box { padding: 12px 2px 6px; border-top: 1px solid var(--line); }
-    .speed-presets-box .label { font-weight: 500; font-size: 13px; }
-    .speed-presets-box .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    /* presets */
+    .presets { padding: 12px 14px 14px; }
+    .presets .label { font-weight: 500; font-size: 13.5px; }
+    .presets .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
     .speed-input {
-      width: 100%; margin-top: 8px; padding: 7px 10px; border-radius: 8px;
-      border: 1px solid var(--line); background: #fdf9f2; color: var(--ink);
-      font-family: inherit; font-size: 12px; outline: none; transition: border-color .2s;
+      width: 100%; margin-top: 10px; height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line);
+      background: var(--bg); color: var(--ink); font: 500 13px system-ui, sans-serif; outline: none; transition: border-color .15s var(--ease);
     }
     .speed-input:focus { border-color: var(--accent); }
-    .chips-row { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+    .chips-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .chip-btn {
-      font-size: 10.5px; padding: 3px 7px; border-radius: 6px;
-      border: 1px solid var(--line); background: var(--hover); color: var(--ink);
-      cursor: pointer; transition: all .15s;
+      height: 26px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 500; cursor: pointer; transition: background-color .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
     }
     .chip-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 
+    /* download */
+    #dlNote { font-size: 11.5px; color: var(--muted); margin: 0 4px 8px; }
+    #dlButtons { display: grid; gap: 6px; }
+    #dlButtons.off { opacity: .4; pointer-events: none; }
+    .dlbtn {
+      display: flex; align-items: center; gap: 10px; width: 100%; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;
+      background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px;
+      transition: background-color .15s var(--ease), border-color .15s var(--ease), transform .1s var(--ease);
+    }
+    .dlbtn:hover { background: #222225; }
+    .dlbtn:active { transform: scale(.98); }
+    .dlbtn::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--track); flex: none; }
+    .dlbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+    .dlbtn.primary:hover { background: #ff6b8a; }
+    .dlbtn.primary::before { background: var(--on-accent); }
+    #dlHint { font-size: 11.5px; color: var(--muted); margin: 8px 4px 0; min-height: 14px; }
+
+    footer { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; }
+
+    #updateBanner { display: none; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 12px; border-radius: 14px; background: var(--accent-soft); border: 1px solid var(--accent); }
+    #updateBanner.show { display: flex; }
+    #updateBanner .row1 { display: flex; align-items: center; gap: 10px; }
+    #updateBanner .text { flex: 1; min-width: 0; }
+    #updateBanner .label { font-weight: 600; font-size: 13px; color: var(--accent-ink); }
+    #updateBanner .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    #updateBanner a.dl, #updateBanner button.dl {
+      flex: none; font-size: 12px; font-weight: 600; text-decoration: none; background: var(--accent); color: var(--on-accent);
+      padding: 7px 12px; border-radius: 9px; border: 0; cursor: pointer; transition: background-color .15s var(--ease);
+    }
+    #updateBanner a.dl:hover, #updateBanner button.dl:hover { background: #ff6b8a; }
+    #updateBanner .actions { display: flex; gap: 6px; }
+    #updateBanner button.dl.secondary { background: transparent; color: var(--accent-ink); border: 1px solid var(--accent); }
+    #updateBanner button.dl.secondary:hover { background: var(--accent-soft); }
+
+    html { scrollbar-width: thin; scrollbar-color: #3a3a3f transparent; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
@@ -201,59 +170,62 @@
       </div>
     </div>
 
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="blockAds">Block ads</div><div class="sub" data-i18n="blockAdsSub">YouTube + web</div></div>
-      <label class="switch"><input type="checkbox" id="blockAds" /><span class="track"></span></label>
-    </div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="loop">Auto-loop</div><div class="sub" data-i18n="loopSub">Repeat, no refresh</div></div>
-      <label class="switch"><input type="checkbox" id="loop" /><span class="track"></span></label>
-    </div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="skip">Skip sponsors</div><div class="sub" data-i18n="skipSub">SponsorBlock data</div></div>
-      <label class="switch"><input type="checkbox" id="skipSponsors" /><span class="track"></span></label>
-    </div>
-    <div id="savedStat"></div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="dislikes">Show dislikes</div><div class="sub" data-i18n="dislikesSub">Return YT Dislike</div></div>
-      <label class="switch"><input type="checkbox" id="showDislikes" /><span class="track"></span></label>
-    </div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="hideShorts">Hide Shorts</div><div class="sub" data-i18n="hideShortsSub">Feeds &amp; search</div></div>
-      <label class="switch"><input type="checkbox" id="hideShorts" /><span class="track"></span></label>
-    </div>
-
-    <div class="row sub-row" id="redirectRow">
-      <div class="text"><div class="label" data-i18n="redirect">Shorts as video</div><div class="sub" data-i18n="redirectSub">Full player</div></div>
-      <label class="switch"><input type="checkbox" id="redirectShorts" /><span class="track"></span></label>
-    </div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="ambientGlow">Ambient glow</div><div class="sub" data-i18n="ambientGlowSub">Color aura · theater</div></div>
-      <label class="switch"><input type="checkbox" id="ambientGlow" /><span class="track"></span></label>
-    </div>
-
-    <div class="row">
-      <div class="text"><div class="label" data-i18n="autoFadeUI">Fade on idle</div><div class="sub" data-i18n="autoFadeUISub">Hide page · theater</div></div>
-      <label class="switch"><input type="checkbox" id="autoFadeUI" /><span class="track"></span></label>
-    </div>
-
-    <div class="vol">
-      <div class="volhead">
-        <span class="label" data-i18n="volume">Volume boost</span>
-        <span class="volval" id="volVal">100%</span>
+    <div class="cap" data-i18n="secPlayback">Playback</div>
+    <div class="card">
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="loop">Auto-loop</div><div class="sub" data-i18n="loopSub">Repeat, no refresh</div></div>
+        <label class="switch"><input type="checkbox" id="loop" /><span class="track"></span></label>
       </div>
-      <input type="range" id="volume" min="100" max="500" step="10" value="100" />
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="skip">Skip sponsors</div><div class="sub" data-i18n="skipSub">SponsorBlock data</div></div>
+        <label class="switch"><input type="checkbox" id="skipSponsors" /><span class="track"></span></label>
+      </div>
+      <div id="savedStat"></div>
+      <div class="vol">
+        <div class="volhead">
+          <span class="label" data-i18n="volume">Volume boost</span>
+          <span class="volval" id="volVal">100%</span>
+        </div>
+        <input type="range" id="volume" min="100" max="500" step="10" value="100" />
+      </div>
     </div>
 
-    <div class="speed-presets-box">
-      <div class="label" data-i18n="speedPresets">Speed slider presets</div>
-      <div class="sub" data-i18n="speedPresetsSub">Custom values for on-player slider (comma-separated)</div>
-      <input type="text" id="speedPresets" class="speed-input" placeholder="1, 1.5, 2, 2.5, 3.5, 5" />
+    <div class="cap" data-i18n="secBlocking">Blocking</div>
+    <div class="card">
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="blockAds">Block ads</div><div class="sub" data-i18n="blockAdsSub">YouTube + web</div></div>
+        <label class="switch"><input type="checkbox" id="blockAds" /><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="hideShorts">Hide Shorts</div><div class="sub" data-i18n="hideShortsSub">Feeds &amp; search</div></div>
+        <label class="switch"><input type="checkbox" id="hideShorts" /><span class="track"></span></label>
+      </div>
+      <div class="row" id="redirectRow">
+        <div class="text"><div class="label" data-i18n="redirect">Shorts as video</div><div class="sub" data-i18n="redirectSub">Full player</div></div>
+        <label class="switch"><input type="checkbox" id="redirectShorts" /><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="dislikes">Show dislikes</div><div class="sub" data-i18n="dislikesSub">Return YT Dislike</div></div>
+        <label class="switch"><input type="checkbox" id="showDislikes" /><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="cap" data-i18n="secEffects">Effects</div>
+    <div class="card">
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="ambientGlow">Ambient glow</div><div class="sub" data-i18n="ambientGlowSub">Color aura · theater</div></div>
+        <label class="switch"><input type="checkbox" id="ambientGlow" /><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="text"><div class="label" data-i18n="autoFadeUI">Fade on idle</div><div class="sub" data-i18n="autoFadeUISub">Hide page · theater</div></div>
+        <label class="switch"><input type="checkbox" id="autoFadeUI" /><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="cap" data-i18n="speedPresets">Speed presets</div>
+    <div class="card presets">
+      <div class="sub" data-i18n="speedPresetsSub">Custom values for the on-player speed control</div>
+      <input type="text" id="speedPresets" class="speed-input" placeholder="1, 1.5, 2, 2.5, 3, 5, 10" />
       <div class="chips-row">
         <button type="button" class="chip-btn" data-val="1, 1.5, 2, 2.5, 3, 5, 10">Default</button>
         <button type="button" class="chip-btn" data-val="0.75, 1, 1.25, 1.5, 1.75, 2">Casual</button>
@@ -262,17 +234,15 @@
       </div>
     </div>
 
-    <div class="section">
-      <h2 data-i18n="download">Download</h2>
-      <div id="dlNote" data-i18n="dlNote">Open a video, then:</div>
-      <div id="dlButtons">
-        <button class="dlbtn primary" data-svc="quality" data-i18n="dlQuality">Choose quality (up to 4K)</button>
-        <button class="dlbtn" data-svc="ytmp3">ytmp3.ws · MP3 &amp; MP4</button>
-        <button class="dlbtn" data-svc="ytmp4">ytmp4.video · MP4</button>
-        <button class="dlbtn" data-svc="ytdlp" data-i18n="ytdlp">Copy yt-dlp command</button>
-      </div>
-      <div id="dlHint"></div>
+    <div class="cap" data-i18n="download">Download</div>
+    <div id="dlNote" data-i18n="dlNote">Open a video, then:</div>
+    <div id="dlButtons">
+      <button class="dlbtn primary" data-svc="quality" data-i18n="dlQuality">Choose quality (up to 4K)</button>
+      <button class="dlbtn" data-svc="ytmp3">ytmp3.ws · MP3 &amp; MP4</button>
+      <button class="dlbtn" data-svc="ytmp4">ytmp4.video · MP4</button>
+      <button class="dlbtn" data-svc="ytdlp" data-i18n="ytdlp">Copy yt-dlp command</button>
     </div>
+    <div id="dlHint"></div>
 
     <footer data-i18n="footer">Reload YouTube after changing options.</footer>
   </div>

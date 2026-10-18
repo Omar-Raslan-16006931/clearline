@@ -9,6 +9,7 @@ const I18N = {
     hideShorts: "Hide Shorts", hideShortsSub: "Feeds & search",
     redirect: "Shorts as video", redirectSub: "Full player",
     volume: "Volume boost",
+    secPlayback: "Playback", secBlocking: "Blocking", secEffects: "Effects",
     download: "Download",
     dlNote: "Open a video, then:",
     dlNoteOff: "Open a video (watch page) first.",
@@ -27,7 +28,7 @@ const I18N = {
     dlQuality: "Choose quality (up to 4K)",
     ambientGlow: "Ambient glow", ambientGlowSub: "Color aura · theater",
     autoFadeUI: "Fade on idle", autoFadeUISub: "Hide page · theater",
-    speedPresets: "Speed slider presets", speedPresetsSub: "Custom values for on-player slider",
+    speedPresets: "Speed presets", speedPresetsSub: "Custom values for the on-player speed control",
   },
   ar: {
     title: "Clear<b>Tube</b>",
@@ -38,6 +39,7 @@ const I18N = {
     hideShorts: "إخفاء Shorts", hideShortsSub: "الصفحات والبحث",
     redirect: "Shorts كفيديو", redirectSub: "المشغل الكامل",
     volume: "تعزيز الصوت",
+    secPlayback: "التشغيل", secBlocking: "الحظر", secEffects: "التأثيرات",
     download: "تنزيل",
     dlNote: "افتح فيديو ثم:",
     dlNoteOff: "افتح فيديو أولاً.",
@@ -56,7 +58,7 @@ const I18N = {
     dlQuality: "اختر الجودة (حتى 4K)",
     ambientGlow: "إضاءة محيطية", ambientGlowSub: "هالة ملونة · المسرح",
     autoFadeUI: "إخفاء عند السكون", autoFadeUISub: "إخفاء الصفحة · المسرح",
-    speedPresets: "إعدادات شريط السرعة", speedPresetsSub: "قيم مخصصة للشريط في المشغل",
+    speedPresets: "إعدادات السرعة", speedPresetsSub: "قيم مخصصة للشريط في المشغل",
   },
 };
 let LANG = "en";

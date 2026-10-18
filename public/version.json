@@ -1,6 +1,6 @@
 {
-  "version": "1.18.0",
+  "version": "1.19.0",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Auto-fade now blacks out the whole page except the video, and Ambient glow is a heavily blurred copy of the video around the player."
+  "notes": "Redesigned dark popup with grouped settings, and a new dark updater app."
 }

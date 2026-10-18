@@ -41,18 +41,23 @@ CONFIG_NAME         = "updater.json"
 def get_default_install_dir():
     return os.path.join(os.path.expanduser("~"), "Documents", "ClearTube")
 
-# ── Palette (Warm aesthetic matching ClearTube) ───────────────────────────
+# ── Palette (dark, matches the ClearTube bar on YouTube) ──────────────────
 
-BG          = "#f2ece1"
-INK         = "#2c2721"
-MUTED       = "#837a6f"
-LINE        = "#e4dbcc"
-ACCENT      = "#c67f56"
-ACCENT2     = "#a1603a"
-HOVER       = "#ebe1d2"
-CARD        = "#fdf9f2"
-SUCCESS     = "#3f7a3f"
-CARD_BORDER = "#dcd3c3"
+BG          = "#0f0f10"
+INK         = "#f5f5f7"
+MUTED       = "#a8a8ad"
+LINE        = "#26262a"
+ACCENT      = "#ff5277"
+ACCENT2     = "#e03e63"
+HOVER       = "#2a2a2e"
+CARD        = "#1a1a1c"
+SUCCESS     = "#4cd27a"
+DANGER      = "#ff6b6b"
+CARD_BORDER = "#2a2a2e"
+ON_ACCENT   = "#1a1a1c"
+BADGE_BG    = "#2a2a2e"
+BADGE_NEW   = "#17301f"
+SOFT_BTN    = "#26262a"
 
 # ── Config Management ──────────────────────────────────────────────────────
 
@@ -381,9 +386,34 @@ class ClearTubeApp:
         self.build_settings_view()
 
         self.show_main_view()
-        self.center_window(500, 530)
+        self.center_window(520, 580)
+        self.polish()
 
         self.root.after(100, self.start_check_thread)
+
+    def polish(self):
+        """Dark title bar on Windows + hover/pressed colors for every button."""
+        try:
+            import ctypes
+            self.root.update()
+            hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+            for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (new / old id)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(ctypes.c_int(1)), 4)
+        except Exception:
+            pass
+
+        def walk(w):
+            for c in w.winfo_children():
+                if isinstance(c, tk.Button):
+                    primary = str(c.cget("bg")).lower() == ACCENT.lower()
+                    c.configure(
+                        activebackground=ACCENT2 if primary else HOVER,
+                        activeforeground=ON_ACCENT if primary else INK,
+                        highlightthickness=0 if not primary else 0,
+                        takefocus=0,
+                    )
+                walk(c)
+        walk(self.root)
 
     def center_window(self, width, height):
         self.root.update_idletasks()
@@ -437,12 +467,12 @@ class ClearTubeApp:
         self.lbl_loc_title = tk.Label(loc_hdr, text="EXTENSION FOLDER", font=("Segoe UI", 8, "bold"), bg=CARD, fg=MUTED)
         self.lbl_loc_title.pack(side="left")
 
-        self.lbl_loc_badge = tk.Label(loc_hdr, text="Auto-Detected", font=("Segoe UI", 8, "bold"), bg="#e8dfd1", fg=ACCENT2, padx=6, pady=1)
+        self.lbl_loc_badge = tk.Label(loc_hdr, text="Auto-Detected", font=("Segoe UI", 8, "bold"), bg=BADGE_BG, fg=ACCENT2, padx=6, pady=1)
         self.lbl_loc_badge.pack(side="right")
 
         self.lbl_main_path = tk.Label(
             loc_card, text=self.current_location,
-            font=("Segoe UI", 9), bg=CARD, fg=INK, anchor="w", wraplength=420, justify="left"
+            font=("Segoe UI", 9), bg=CARD, fg=INK, anchor="w", wraplength=440, justify="left"
         )
         self.lbl_main_path.pack(fill="x", padx=14, pady=(4, 10))
 
@@ -470,15 +500,15 @@ class ClearTubeApp:
         # Release Notes / Description
         self.lbl_notes = tk.Label(
             self.main_frame, text="", font=("Segoe UI", 8), bg=BG, fg=MUTED,
-            wraplength=440, justify="center"
+            wraplength=460, justify="center"
         )
         self.lbl_notes.pack(fill="x", padx=24, pady=(8, 0))
 
         # Primary Action Button (Install / Update)
         self.btn_action = tk.Button(
             self.main_frame, text="Checking status…", font=("Segoe UI", 11, "bold"),
-            bg=ACCENT, fg="#ffffff", activebackground=ACCENT2, activeforeground="#ffffff",
-            relief="flat", bd=0, cursor="hand2", padx=20, pady=12,
+            bg=ACCENT, fg=ON_ACCENT, activebackground=ACCENT2, activeforeground=ON_ACCENT,
+            relief="flat", bd=0, cursor="hand2", padx=20, pady=14,
             command=self.on_primary_action
         )
         self.btn_action.pack(fill="x", padx=24, pady=(14, 0))
@@ -541,7 +571,7 @@ class ClearTubeApp:
 
         self.loc_listbox = tk.Listbox(
             self.loc_listbox_frame, font=("Segoe UI", 9), bg=CARD, fg=INK,
-            selectbackground=ACCENT, selectforeground="#ffffff",
+            selectbackground=ACCENT, selectforeground=ON_ACCENT,
             relief="flat", bd=0, height=4, activestyle="none"
         )
         self.loc_listbox.pack(side="left", fill="both", expand=True, padx=6, pady=6)
@@ -551,7 +581,7 @@ class ClearTubeApp:
 
         tk.Button(
             loc_btn_row, text="Select As Active", font=("Segoe UI", 8, "bold"),
-            bg=ACCENT, fg="#ffffff", relief="flat", bd=0, cursor="hand2",
+            bg=ACCENT, fg=ON_ACCENT, relief="flat", bd=0, cursor="hand2",
             padx=8, pady=4, command=self.on_use_selected_location
         ).pack(side="left", padx=(0, 6))
 
@@ -577,7 +607,7 @@ class ClearTubeApp:
         chk_startup = tk.Checkbutton(
             opts_card, text=" Launch on Windows startup (auto-checks for new updates)",
             variable=self.var_startup, font=("Segoe UI", 9), bg=CARD, fg=INK,
-            selectcolor="#ffffff", activebackground=CARD, anchor="w", cursor="hand2",
+            selectcolor=BG, activebackground=CARD, activeforeground=INK, anchor="w", cursor="hand2",
             command=self.on_toggle_startup
         )
         chk_startup.pack(fill="x", padx=10, pady=(6, 3))
@@ -586,7 +616,7 @@ class ClearTubeApp:
         chk_silent = tk.Checkbutton(
             opts_card, text=" Download & apply updates silently in the background",
             variable=self.var_silent, font=("Segoe UI", 9), bg=CARD, fg=INK,
-            selectcolor="#ffffff", activebackground=CARD, anchor="w", cursor="hand2",
+            selectcolor=BG, activebackground=CARD, activeforeground=INK, anchor="w", cursor="hand2",
             command=self.save_settings_from_gui
         )
         chk_silent.pack(fill="x", padx=10, pady=(0, 3))
@@ -595,7 +625,7 @@ class ClearTubeApp:
         chk_backup = tk.Checkbutton(
             opts_card, text=" Create automatic backup of previous version before updating",
             variable=self.var_backup, font=("Segoe UI", 9), bg=CARD, fg=INK,
-            selectcolor="#ffffff", activebackground=CARD, anchor="w", cursor="hand2",
+            selectcolor=BG, activebackground=CARD, activeforeground=INK, anchor="w", cursor="hand2",
             command=self.save_settings_from_gui
         )
         chk_backup.pack(fill="x", padx=10, pady=(0, 6))
@@ -611,13 +641,13 @@ class ClearTubeApp:
 
         tk.Button(
             rec_btn_row, text="Restore Previous Backup", font=("Segoe UI", 8),
-            bg="#f0e6d6", fg=INK, relief="flat", bd=0, cursor="hand2",
+            bg=SOFT_BTN, fg=INK, relief="flat", bd=0, cursor="hand2",
             padx=8, pady=4, command=self.on_restore_backup
         ).pack(side="left", padx=(0, 6))
 
         tk.Button(
             rec_btn_row, text="Open chrome://extensions", font=("Segoe UI", 8),
-            bg="#f0e6d6", fg=INK, relief="flat", bd=0, cursor="hand2",
+            bg=SOFT_BTN, fg=INK, relief="flat", bd=0, cursor="hand2",
             padx=8, pady=4, command=self.open_chrome_url
         ).pack(side="left")
 
@@ -633,11 +663,11 @@ class ClearTubeApp:
                 if d["path"].lower() == path.lower():
                     badge = d["source"]
                     break
-            self.lbl_loc_badge.config(text=badge, bg="#e8dfd1", fg=ACCENT2)
+            self.lbl_loc_badge.config(text=badge, bg=BADGE_BG, fg=ACCENT2)
         else:
             self.lbl_loc_title.config(text="INSTALL DESTINATION")
             self.lbl_main_path.config(text=path or get_default_install_dir())
-            self.lbl_loc_badge.config(text="New Install", bg="#e0e8db", fg=SUCCESS)
+            self.lbl_loc_badge.config(text="New Install", bg=BADGE_NEW, fg=SUCCESS)
 
     def refresh_settings_view(self):
         self.detected_list = detect_all_locations()
@@ -785,7 +815,7 @@ class ClearTubeApp:
 
         if error_msg:
             self.lbl_available.config(text="Offline")
-            self.lbl_status_pill.config(text="● Check Failed", fg="#a84343")
+            self.lbl_status_pill.config(text="● Check Failed", fg=DANGER)
             self.lbl_status.config(text=f"Network error: {error_msg}")
             self.btn_action.config(state="normal", text="Retry Connection", bg=CARD, fg=INK)
             self._action_mode = "check"
@@ -804,7 +834,7 @@ class ClearTubeApp:
             self.btn_action.config(
                 state="normal",
                 text=f"⬇ Download & Install ClearTube v{remote_ver}",
-                bg=ACCENT, fg="#ffffff"
+                bg=ACCENT, fg=ON_ACCENT
             )
             self._action_mode = "install"
             return
@@ -818,7 +848,7 @@ class ClearTubeApp:
             self.btn_action.config(
                 state="normal",
                 text=f"Update to v{remote_ver}",
-                bg=ACCENT, fg="#ffffff"
+                bg=ACCENT, fg=ON_ACCENT
             )
             self._action_mode = "update"
         else:
@@ -863,7 +893,7 @@ class ClearTubeApp:
 
     def _on_install_update_completed(self, err, is_fresh, backup):
         if err:
-            self.btn_action.config(state="normal", text="Retry", bg=ACCENT, fg="#ffffff")
+            self.btn_action.config(state="normal", text="Retry", bg=ACCENT, fg=ON_ACCENT)
             self.lbl_status.config(text=f"Operation failed: {err}")
             messagebox.showerror("Error", f"Failed to complete operation:\n\n{err}")
         else:
