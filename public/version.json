@@ -1,6 +1,6 @@
 {
-  "version": "1.17.1",
+  "version": "1.17.2",
   "url": "https://cleartube.vercel.app/cleartube.zip",
   "exeUrl": "https://cleartube.vercel.app/ClearTube-Installer.exe",
-  "notes": "Bar sits much lower under the player."
+  "notes": "Bar spacing under the player tuned (not as low)."
 }
